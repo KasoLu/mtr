@@ -49,6 +49,8 @@
         [(or `(lambda ([,v* : ,_]...) : ,_ ,e1)
              `(lambda ,v* ,e1))
         `(closure ,v* ,e1 ,env)]
+        [(or `(fun-ref ,e1))
+         (MTR/arg env e1)]
         [(or `(app ,e1 . ,e*)
              `(,e1 . ,e*))
          (match (recur e1)
