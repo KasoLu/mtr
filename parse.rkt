@@ -84,9 +84,9 @@
             (match tv
               [`(Vector . ,t*)
                 (if (< i (length t*))
-                 `(typed (vector-ref ,ev ,i) ,(list-ref t* i))
-                  (report-error/oor `(vector-ref ,tv ,i)))]
-              [_(report-error/typ `(vector-ref ,tv ,i))]))]
+                 `(typed (vector-ref ,ev ,(recur i)) ,(list-ref t* i))
+                  (report-error/oor `(vector-ref ,tv 'Integer)))]
+              [_(report-error/typ `(vector-ref ,tv 'Integer))]))]
         [`(vector-set! ,ev ,(? fixnum? i) ,e1)
           (let* 
             ([ev (recur ev)] [tv (typed->type ev)]
@@ -94,7 +94,7 @@
             (match tv
               [`(Vector . ,t*)
                 (if (< i (length t*))
-                 `(typed (vector-set! ,ev ,i ,e1) Void)
+                 `(typed (vector-set! ,ev ,(recur i) ,e1) Void)
                   (report-error/oor `(vector-set! ,tv ,i ,t1)))]
               [_(report-error/typ `(vector-set! ,tv ,i ,t1))]))]
         [`(lambda ([,v* : ,t*]...) : ,rt ,e1)
