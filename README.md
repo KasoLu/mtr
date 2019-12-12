@@ -16,3 +16,5 @@
   Type : Integer | Boolean | Void | Vector | -> 
        | (Vector Type*) | (Type* -> Type)
   ```
+
+最后阶段将函数名更改回不带数字的版本
