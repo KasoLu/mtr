@@ -85,6 +85,9 @@
     (for ([kase case*])
       (newline)
       (pretty-display
-       `((execute ,(handle (foldl curry kase pass*)))
-         (content ,(% kase)))))))
+        (let loop ([res '()] [kase kase] [pass* pass*])
+          (if (empty? pass*)
+           `((execute ,(reverse res)) (content ,kase))
+            (let* ([pass (car pass*)] [kase (pass kase)])
+              (loop (cons (handle kase) res) kase (cdr pass*)))))))))
 
