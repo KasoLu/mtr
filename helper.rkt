@@ -27,6 +27,10 @@
     [`(define (,f . ,p*) ,fi ,e) f]
     [`(define (,f . ,p*) ,e) f]))
 
+(define proc-type?
+  (lambda (type)
+    (match? `(,_ ... -> ,_) type)))
+
 ;; ----- utils ----- ;;
 (define make-assoc
   (lambda () (list)))
@@ -74,6 +78,10 @@
     [(_ func vals)
      (call-with-values (lambda () vals) func)]))
 
+(define-syntax match?
+  (syntax-rules ()
+    [(_ pat val) (match val [pat #t] [_ #f])]))
+
 (define-match-expander else
   (lambda (stx)
     (syntax-case stx ()
@@ -87,7 +95,7 @@
       (pretty-display
         (let loop ([res '()] [kase kase] [pass* pass*])
           (if (empty? pass*)
-           `((execute ,(reverse res)) (content ,kase))
+           `((execute ,(reverse res)) ,kase)
             (let* ([pass (car pass*)] [kase (pass kase)])
               (loop (cons (handle kase) res) kase (cdr pass*)))))))))
 
