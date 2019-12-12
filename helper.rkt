@@ -74,10 +74,6 @@
     [(_ func vals)
      (call-with-values (lambda () vals) func)]))
 
-;(define-syntax else
-;  (syntax-rules ()
-;    [(_) #t]))
-
 (define-match-expander else
   (lambda (stx)
     (syntax-case stx ()
@@ -85,14 +81,10 @@
 
 ;; ----- test ----- ;;
 (define test
-  (lambda (handle* . case*)
+  (lambda (handle pass* . case*)
     (for ([kase case*])
       (newline)
       (pretty-display
-        (for/fold ([res '()]) ([handle handle*])
-          (match handle
-            [`(,pass ,interp ,output)
-              (let ([kase (pass kase)])
-               `(,@res ,pass
-                 (result ,(interp kase))
-                 (output ,(output kase))))]))))))
+       `((execute ,(handle (foldl curry kase pass*)))
+         (content ,(% kase)))))))
+

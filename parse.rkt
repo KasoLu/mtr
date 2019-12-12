@@ -162,9 +162,8 @@
     (error 'parse "index out of range: ~a" expr)))
 
 ;(require "interp.rkt")
-;(test
-; `([,identity ,MTR/interp ,identity]
-;   [,\@pgm    ,MTR/interp ,identity])
+;(test MTR/interp
+; `(,\@pgm)
 
 ; `(program () 42)
 ; `(program () #t)
