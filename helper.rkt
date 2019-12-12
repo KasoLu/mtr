@@ -4,6 +4,12 @@
 (require racket/control)
 
 ;; ---- language ---- ;;
+(define g-fp
+  '(global-value free_ptr))
+
+(define g-fe
+  '(global-value fromspace_end))
+
 (define ath-op?
   (curry set-member? '(+ - * /)))
 
@@ -30,6 +36,12 @@
 (define proc-type?
   (lambda (type)
     (match? `(,_ ... -> ,_) type)))
+
+(define vector-type?
+  (match-lambda
+    [`(Vector . ,_) #t]
+    ['Vector #t]
+    [_ #f]))
 
 ;; ----- utils ----- ;;
 (define make-assoc
@@ -71,6 +83,13 @@
       (string-append
         (symbol->string sym1)
         (symbol->string sym2)))))
+
+(define map/reverse
+  (lambda (proc . ls*)
+    (if (empty? ls*) (list)
+      (let loop ([z* (apply map list ls*)] [acc (list)])
+        (if (empty? z*) acc
+          (loop (cdr z*) (cons (apply proc (car z*)) acc)))))))
 
 ;; ----- syntax ----- ;;
 (define-syntax apply/values

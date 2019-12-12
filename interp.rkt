@@ -5,7 +5,8 @@
 
 (define MTR/pgm
   (match-lambda
-    [(or `(program ,pi ,def* ... (define (,_ ...) ,e))
+    [(or `(program ,pi ,def* ... (define (,_ ...) ,_ ,e)) 
+         `(program ,pi ,def* ... (define (,_ ...) ,e))
          `(program ,pi ,def* ... ,e))
      (let ([env (map MTR/def def*)])
        (for ([k.v env]) (set-mcdr! k.v (set-closure-env (mcdr k.v) env)))
@@ -51,6 +52,12 @@
         `(closure ,v* ,e1 ,env)]
         [(or `(fun-ref ,e1))
          (MTR/arg env e1)]
+        [(or `(global-value ,v))
+         (glb->var v)]
+        [(or `(collect ,i))
+         (void)]
+        [(or `(allocate ,len ,tag))
+         (make-vector len)]
         [(or `(app ,e1 . ,e*)
              `(,e1 . ,e*))
          (match (recur e1)
@@ -66,6 +73,14 @@
       [(? fixnum?) arg]
       [(? boolean?) arg]
       [(? symbol?) (env-ref env arg)])))
+
+(define free-ptr 0)
+(define fromspace-end 1)
+
+(define glb->var
+  (match-lambda
+    ['free_ptr free-ptr]
+    ['fromspace_end fromspace-end]))
 
 (define ath-op->proc
   (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))
