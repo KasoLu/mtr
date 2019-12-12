@@ -42,10 +42,10 @@
          (if (recur e1) (recur e2) (recur e3))]
         [(or `(vector . ,e*))
          (apply vector (map recur e*))]
-        [(or `(vector-ref ,ev ,i))
-         (vector-ref (recur ev) i)]
-        [(or `(vector-set! ,ev ,i ,e1))
-         (vector-set! (recur ev) i (recur e1))]
+        [(or `(vector-ref ,ev ,ei))
+         (vector-ref (recur ev) (recur ei))]
+        [(or `(vector-set! ,ev ,ei ,e1))
+         (vector-set! (recur ev) (recur ei) (recur e1))]
         [(or `(lambda ([,v* : ,_]...) : ,_ ,e1)
              `(lambda ,v* ,e1))
         `(closure ,v* ,e1 ,env)]
