@@ -10,14 +10,14 @@
 (define g-fe
  '(global-value fromspace_end))
 
-(define ath-op?
-  (curry set-member? '(+ - * /)))
+(define ath-op '(+ - * /))
+(define ath-op? (curry set-member? ath-op))
 
-(define cmp-op?
-  (curry set-member? '(eq? < <= > >=)))
+(define cmp-op '(eq? < <= > >=))
+(define cmp-op? (curry set-member? cmp-op))
 
-(define lgc-op?
-  (curry set-member? '(and or not)))
+(define lgc-op '(and or not))
+(define lgc-op? (curry set-member? lgc-op))
 
 (define typed->type
   (match-lambda
@@ -42,6 +42,13 @@
     [`(Vector . ,_) #t]
     ['Vector #t]
     [_ #f]))
+
+(define smp-exp?
+  (match-lambda
+    [`(global-value ,_) #t]
+    [`(fun-ref ,_) #t]
+    [ (or (? integer?) (? boolean?) (? symbol?)) #t]
+    [_(% #f)]))
 
 ;; ----- utils ----- ;;
 (define make-assoc
@@ -91,6 +98,15 @@
         (if (empty? z*) acc
           (loop (cdr z*) (cons (apply proc (car z*)) acc)))))))
 
+(define map/values
+  (lambda (proc ls [handle #f])
+    (cond
+      [(not (empty? ls))
+       (let ([wrap (lambda (e) (call-with-values (lambda () (proc e)) list))])
+         (apply values (apply map list (map wrap ls))))]
+      [(not handle) (error 'map/values "list is empty")]
+      [(owise) (handle)])))
+
 ;; ----- syntax ----- ;;
 (define-syntax apply/values
   (syntax-rules ()
@@ -105,6 +121,10 @@
   (lambda (stx)
     (syntax-case stx ()
       [(_) #'(var _)])))
+
+(define-syntax owise
+  (syntax-rules ()
+    [(_) #t]))
 
 ;; ----- test ----- ;;
 (define test
