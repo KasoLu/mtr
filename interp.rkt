@@ -38,7 +38,10 @@
         [(or `(,(? cmp-op? op) . ,e*))
          (apply (cmp-op->proc op) (map recur e*))]
         [(or `(let ([,v ,e1]) ,e2))
-         (MTR/exp (env-add env v (recur e1)) e2)]
+         (let ([e1 (recur e1)])
+           (if (eq? v '_)
+             (recur e2)
+             (MTR/exp (env-add env v e1) e2)))]
         [(or `(if ,e1 ,e2 ,e3))
          (if (recur e1) (recur e2) (recur e3))]
         [(or `(vector . ,e*) `(vector-tag ,_ . ,e*))
@@ -53,7 +56,7 @@
         [(or `(fun-ref ,e1))
          (MTR/arg env e1)]
         [(or `(global-value ,v))
-         (glb->var v)]
+         (% 0)]
         [(or `(collect ,i))
          (void)]
         [(or `(allocate ,len ,tag))
@@ -73,14 +76,6 @@
       [(? fixnum?) arg]
       [(? boolean?) arg]
       [(? symbol?) (env-ref env arg)])))
-
-(define free-ptr 0)
-(define fromspace-end 1)
-
-(define glb->var
-  (match-lambda
-    ['free_ptr free-ptr]
-    ['fromspace_end fromspace-end]))
 
 (define ath-op->proc
   (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))

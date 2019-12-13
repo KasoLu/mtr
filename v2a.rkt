@@ -1,6 +1,6 @@
 #lang racket
 
-(provide (rename-out [@pgm v2a]))
+(provide (rename-out [@pgm vector-to-alloc]))
 (require "helper.rkt")
 
 (define @pgm
@@ -21,17 +21,11 @@
 (define @exp
   (lambda (expr)
     (match expr
-      [`(typed (vector . ,e*) ,t)
-        (let 
-          ([v* (for/list ([_ e*]) (gensym 'var))]
-           [e* (map/reverse @exp e*)])
-          (let ([vec (gensym 'vec)])
-            ($vec-rcd/add vec)
-            (vec-init v* e*
-              (vec-collect vec (length e*) (type->tag t)
-                (vec-set vec v*)))))]
-      [`(typed ,e ,t)
-        (@exp e)]
+      [`(vector-tag ,tag . ,e*)
+        (let ([vec (gensym 'vec)] [e* (map/reverse @exp e*)])
+          ($vec-rcd/add vec)
+          (vec-collect vec (length e*) tag
+            (vec-set vec e*)))]
       [`(let ([,v ,e1]) ,e2)
        `(let ([,v ,(@exp e1)]) ,(@exp e2))]
       [`(fun-ref ,l) expr]
@@ -45,45 +39,23 @@
     ($vec-rcd/cur (cons vec ($vec-rcd/cur)))))
 
 (define vec-set
-  (lambda (vec v*)
-    (let loop ([v* v*] [acc vec])
-      (if (empty? v*) acc
-        (let ([idx (sub1 (length v*))])
-          (loop (cdr v*)
-           `(let ([,(gensym 'ret) (vector-set! ,vec ,idx ,(car v*))]) ,acc)))))))
+  (lambda (vec e*)
+    (let loop ([e* e*] [acc vec])
+      (if (empty? e*)
+        (% acc)
+        (loop (cdr e*)
+         `(let ([_ (vector-set! ,vec ,(sub1 (length e*)) ,(car e*))]) ,acc))))))
 
 (define vec-collect
   (lambda (vec len tag vse)
     (let ([siz (* 8 (add1 len))])
-     `(let
-        ([,(gensym 'ret)
-           (if (< (+ ,g-fp ,siz) ,g-fe)
-             (void)
-             (collect ,siz))])
+     `(let ([_ (if (< (+ ,g-fp ,siz) ,g-fe) (void) (collect ,siz))])
         (let ([,vec (allocate ,len ,tag)]) ,vse)))))
 
-(define vec-init
-  (lambda (v* e* vce)
-    (for/fold ([acc vce]) ([v v*] [e e*])
-     `(let ([,v ,e]) ,acc))))
-
-(define type->tag
-  (match-lambda
-    [`(Vector . ,type*)
-      (let loop ([t* (reverse type*)] [pm 0])
-        (if (empty? t*)
-          (bitwise-ior 0
-            (arithmetic-shift (length type*) 1)
-            (arithmetic-shift pm 7))
-          (loop (cdr t*)
-            (bitwise-ior
-              (arithmetic-shift pm 1)
-              (if (vector-type? (car t*)) 1 0)))))]))
-
 ;(require "interp.rkt")
-;(require "parse.rkt" "ssa.rkt" "c2f.rkt" "limit-proc.rkt")
+;(require "parse.rkt" "ssa.rkt" "c2f.rkt" "limit-proc.rkt" "type-eliminate.rkt")
 ;(test MTR/interp
-; `(,parse ,ssa ,c2f ,limit-proc ,\@pgm)
+; `(,parse ,ssa ,c2f ,limit-proc ,type-eliminate ,\@pgm)
 
 ; `(program ()
 ;    (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
