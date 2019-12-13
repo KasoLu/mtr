@@ -8,7 +8,7 @@
     [`(program ,pi . ,def+)
       (let ([def-u+ (map @def/dec def+)])
         (let ([f* (map define->name def+)] [fu* (map define->name def-u+)])
-         `(program ,(assoc-add pi 'func-ssa (map make-pair fu* f*)) .
+         `(program ,pi .
            ,(map (curry @def/exp (map make-pair f* fu*)) def-u+))))]))
 
 (define @def/dec
