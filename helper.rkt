@@ -5,10 +5,10 @@
 
 ;; ---- language ---- ;;
 (define g-fp
-  '(global-value free_ptr))
+ '(global-value free_ptr))
 
 (define g-fe
-  '(global-value fromspace_end))
+ '(global-value fromspace_end))
 
 (define ath-op?
   (curry set-member? '(+ - * /)))
