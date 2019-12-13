@@ -77,36 +77,4 @@
       [(? boolean?) arg]
       [(? symbol?) (env-ref env arg)])))
 
-(define ath-op->proc
-  (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))
-
-(define cmp-op->proc
-  (match-lambda ['eq? eq?] ['< fx<] ['> fx>] ['<= fx<=] ['>= fx>=]))
-
-(define env-cre
-  (lambda () (list)))
-
-(define env-ref
-  (lambda (env key)
-    (let loop ([env env])
-      (if (empty? env)
-        (error 'env "couldn't find '~a' in env" key)
-        (match (car env)
-          [(mcons k v)
-           (if (eq? key k) v
-             (loop (cdr env)))])))))
-
-(define env-add
-  (case-lambda
-    [(env key val)
-     (cons (mcons key val) env)]
-    [(env ass)
-     (for/fold ([env env]) ([k.v ass])
-       (match k.v [`(,k ,v) (env-add env k v)]))]))
-
-(define set-closure-env
-  (lambda (closure nenv)
-    (match closure
-      [`(closure ,v* ,e ,senv)
-       `(closure ,v* ,e ,nenv)])))
 
