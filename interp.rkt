@@ -41,7 +41,7 @@
          (MTR/exp (env-add env v (recur e1)) e2)]
         [(or `(if ,e1 ,e2 ,e3))
          (if (recur e1) (recur e2) (recur e3))]
-        [(or `(vector . ,e*))
+        [(or `(vector . ,e*) `(vector-tag ,_ . ,e*))
          (apply vector (map recur e*))]
         [(or `(vector-ref ,ev ,ei))
          (vector-ref (recur ev) (recur ei))]
