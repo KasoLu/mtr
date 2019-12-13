@@ -75,5 +75,10 @@
 ;    (define (add1 [x : Integer]) : Integer
 ;      (+ x 1))
 ;    (vector-ref (map-vec add1 (vector 0 41)) 1))
+; `(program ()
+;    (let ([x 10])
+;      (let ([f (lambda () : Integer (+ x (+ 20 20)))])
+;        (let ([x 30])
+;          (f)))))
 ; )
 
