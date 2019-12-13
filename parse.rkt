@@ -134,16 +134,16 @@
   (lambda (def)
     ($define-record/cur (cons def ($define-record/cur)))))
 
+(define define->func.type
+  (match-lambda
+    [`(define (,f [,v* : ,t*]...) : ,rt ,e)
+      (make-pair f `(,@t* -> ,rt))]))
+
 (define all-Integer?
   (curry andmap (curry eq? 'Integer)))
 
 (define all-Boolean?
   (curry andmap (curry eq? 'Boolean)))
-
-(define define->func.type
-  (match-lambda
-    [`(define (,f [,v* : ,t*]...) : ,rt ,e)
-      (make-pair f `(,@t* -> ,rt))]))
 
 (define report-error/exp
   (lambda (expr)
