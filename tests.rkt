@@ -1,18 +1,16 @@
 #lang racket
 
 (require "helper.rkt" "interp.rkt")
-(require "parse.rkt" "uniquify.rkt")
+(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt")
 
 (test MTR/interp 
- `(,identity ,parse ,uniquify
+ `(,identity ,parse ,uniquify ,closure-to-define
   )
 
- `(program () 41)
+ `(program () 42)
  `(program () #t)
  `(program () #f)
- `(program () (read))
  `(program () (void))
- `(program () (let ([x 42]) x))
  `(program () (let ([x 10]) x))
  `(program () (let ([x (let ([x 20]) x)]) x))
  `(program () (let ([x (let ([x 20]) x)]) (let ([x 30]) x)))
@@ -36,7 +34,6 @@
  `(program () (vector (vector 1 2) (vector #t #f)))
  `(program () (vector-ref (vector 42 #t) 0))
  `(program () (vector-set! (vector 42 #t) 1 24))
- `(program () (lambda ([a1 : Integer]) : Integer (+ a1 10)))
  `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
  `(program ()
     (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
@@ -60,5 +57,28 @@
       (let ([f (lambda () : Integer (+ x (+ 20 20)))])
         (let ([x 30])
           (f)))))
+ `(program ()
+    (define (foo) : Integer 42)
+    (define (bar [arg1 : Integer]) : Boolean (< arg1 42))
+    (define (aaa [arg1 : Integer] [arg2 : Boolean]) : Integer
+      (if (and (bar 10) arg2) (foo) 20))
+    (aaa 24 #t))
+ `(program ()
+    (define (f [x : Integer]) : (Integer -> Integer)
+      (let ([y 4])
+        (lambda ([z : Integer]) : Integer
+          (+ x (+ y z)))))
+    (let ([g (f 5)])
+      (let ([h (f 3)])
+        (+ (g 11) (h 15)))))
+ `(program ()
+    (define (b [z : (Integer -> (Integer -> Integer))]) : Integer
+      (let ([c (z 10)])
+        (c 20)))
+    (let ([f (lambda ([a : Integer]) : (Integer -> Integer)
+               (let ([x (lambda ([y : Integer]) : Integer y)])
+                 (lambda ([d : Integer]) : Integer
+                   (+ a (+ d (x 30))))))])
+      (b f)))
  )
 
