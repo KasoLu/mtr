@@ -6,49 +6,34 @@
 (define ast:pgm
   (match-lambda
     [`(program ,pi . ,def+)
-      (let ([f+ (map define->name def+)])
-       `(program ,pi . ,(map (curry ast:def f+) def+)))]))
+     `(program ,pi . ,(map ast:def def+))]))
 
 (define ast:def
-  (lambda (f+ def)
-    (match def
-      [`(define (,f . ,v*) ,e)
-        (let* ([vecp (gensym 'vecp)] [e (ast:exp f+ v* vecp e)])
-          (if (< (length v*) 6)
-           `(define (,f . ,v*) ,e)
-           `(define (,f ,@(take v* 5) ,vecp) ,e)))])))
+  (match-lambda
+    [`(define (,f . ,v*) ,e)
+      (let* ([vecp (gensym 'vecp)] [e (ast:exp v* vecp e)])
+        (if (< (length v*) 6)
+         `(define (,f . ,v*) ,e)
+         `(define (,f ,@(take v* 5) ,vecp) ,e)))]))
 
 (define ast:exp
-  (lambda (f+ v* vecp expr)
-    (let ([recur (curry ast:exp f+ v* vecp)])
+  (lambda (v* vecp expr)
+    (let ([recur (curry ast:exp v* vecp)])
       (match expr
-        [`(typed ,e ,t)
-         `(typed ,(recur e) ,t)]
+        [`(typed ,(? symbol? v) ,t)
+          (let ([idx (index-of v* v)])
+            (if (or (not idx) (< idx 5))
+              (% expr)
+             `(vector-ref (typed ,vecp (Vector ...)) ,(- idx 5))))]
         [`(let ([,v ,e1]) ,e2)
          `(let ([,v ,(recur e1)]) ,(recur e2))]
         [`(app ,e1 . ,e*)
           (let ([e1 (recur e1)] [e* (map recur e*)])
             (if (< (length e*) 6)
              `(app ,e1 . ,e*)
-             `(app ,e1 ,@(take e* 5)
-               ,(let ([vec-e* (drop e* 5)])
-                 `(typed 
-                    (vector . ,vec-e*)
-                    (Vector . ,(map typed->type vec-e*)))))))]
+             `(app ,e1 ,@(take e* 5) 
+                (typed (vector . ,(drop e* 5)) (Vector ...)))))]
         [`(,op . ,e*)
          `(,op . ,(map recur e*))]
-        [_(ast:arg f+ v* vecp expr)]))))
-
-(define ast:arg
-  (lambda (f+ v* vecp arg)
-    (match arg
-      [(? symbol?)
-       (if (memq arg f+)
-        `(fun-ref ,arg)
-         (let ([idx (index-of v* arg)])
-           (if (or (not idx) (< idx 5)) arg
-            `(vector-ref
-               (typed ,vecp Vector)
-               (typed ,(- idx 5) Integer)))))]
-      [(else) arg])))
+        [_(% expr)]))))
 
