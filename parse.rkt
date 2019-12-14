@@ -195,6 +195,7 @@
 ; `(program () (<= 42 24))
 ; `(program () (>= 42 24))
 ; `(program () (vector 42 #t))
+; `(program () (vector (vector 1 2) (vector #t #f)))
 ; `(program () (vector-ref (vector 42 #t) 0))
 ; `(program () (vector-set! (vector 42 #t) 1 24))
 ; `(program () (lambda ([a1 : Integer]) : Integer (+ a1 10)))
