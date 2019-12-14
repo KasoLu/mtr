@@ -42,10 +42,8 @@
     (match? `(,_ ... -> ,_) type)))
 
 (define vector-type?
-  (match-lambda
-    [`(Vector . ,_) #t]
-    ['Vector #t]
-    [_ #f]))
+  (lambda (type)
+    (match? `(Vector . ,_) type)))
 
 (define smp-exp?
   (match-lambda
