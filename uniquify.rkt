@@ -1,62 +1,61 @@
 #lang racket
 
-(provide (rename-out [@pgm ssa]))
+(provide (rename-out [ast:pgm uniquify]))
 (require "helper.rkt")
 
-(define @pgm
+(define ast:pgm
   (match-lambda
-    [`(program ,pi . ,def+)
-      (let ([def-u+ (map @def/dec def+)])
-        (let ([f* (map define->name def+)] [fu* (map define->name def-u+)])
-         `(program ,pi .
-           ,(map (curry @def/exp (map make-pair f* fu*)) def-u+))))]))
+    [`(program ,pi ,def* ... ,expr)
+      (let ([def/u* (map ast:def/dec def*)])
+        (let ([f* (map define->name def*)] [f/u* (map define->name def/u*)])
+          (let ([v.u* (map make-pair f* f/u*)])
+           `(program ,pi ,@(map (curry ast:def/exp v.u*) def/u*)
+             ,(ast:exp v.u* expr)))))]))
 
-(define @def/dec
-  (lambda (def)
-    (match def
-      [`(define (,f . ,v*) ,e)
-       `(define (,(gensym f) . ,v*) ,e)])))
+(define ast:def/dec
+  (match-lambda
+    [`(define (,f . ,v*) ,e)
+     `(define (,(gensym f) . ,v*) ,e)]))
 
-(define @def/exp
-  (lambda (venv def)
+(define ast:def/exp
+  (lambda (v.u* def)
     (match def
       [`(define (,f . ,v*) ,e)
         (let ([vu* (map gensym v*)])
          `(define (,f . ,vu*)
-           ,(@exp (assoc-add venv (map make-pair v* vu*)) e)))])))
+           ,(ast:exp (assoc-add v.u* (map make-pair v* vu*)) e)))])))
 
-(define @exp
-  (lambda (venv expr)
-    (let ([recur (curry @exp venv)])
+(define ast:exp
+  (lambda (v.u* expr)
+    (let ([recur (curry ast:exp v.u*)])
       (match expr
         [`(typed ,e ,t)
          `(typed ,(recur e) ,t)]
         [`(let ([,v ,e1]) ,e2)
-          (let ([vu (gensym v)])
-           `(let ([,vu ,(recur e1)])
-             ,(@exp (assoc-add venv v vu) e2)))]
+          (let ([v/u (gensym v)])
+           `(let ([,v/u ,(recur e1)])
+             ,(ast:exp (assoc-add v.u* v v/u) e2)))]
         [`(lambda ,v* ,e1)
-          (let ([vu* (map gensym v*)])
-           `(lambda ,vu* ,(@exp (assoc-add venv (map make-pair v* vu*)) e1)))]
+          (let ([v/u* (map gensym v*)])
+           `(lambda ,v/u* ,(ast:exp (assoc-add v.u* (map make-pair v* v/u*)) e1)))]
         [`(,op . ,e*)
          `(,op . ,(map recur e*))]
-        [_(@arg venv expr)]))))
+        [_(ast:arg v.u* expr)]))))
 
-(define @arg
-  (lambda (venv arg)
+(define ast:arg
+  (lambda (v.u* arg)
     (match arg
-      [(? symbol?) (assoc-ref venv arg)]
+      [(? symbol?) (assoc-ref v.u* arg)]
       [(else) arg])))
 
 ;(require "interp.rkt")
 ;(require "parse.rkt")
 ;(test MTR/interp
-; `(,parse ,\@pgm)
+; `(,parse ,ast:pgm)
 
 ; `(program () (let ([x 10]) x))
 ; `(program () (let ([x (let ([x 20]) x)]) x))
 ; `(program () (let ([x (let ([x 20]) x)]) (let ([x 30]) x)))
-; `(program () (lambda ([a1 : Integer]) : Integer (+ a1 10)))
 ; `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
 ; `(program ()
 ;    (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
@@ -66,7 +65,7 @@
 ;                 [d2 : (Integer -> Integer)])
 ;            : (Vector Integer Integer)
 ;      (vector (d1 30) (d2 40)))
-;    (ddd bbb ccc))
+;    (vector-ref (ddd bbb ccc) 0))
 ; `(program ()
 ;    (define (map-vec [f : (Integer -> Integer)]
 ;                     [v : (Vector Integer Integer)])
