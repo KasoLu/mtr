@@ -27,6 +27,10 @@
   (match-lambda
     [`(typed ,expr ,type) expr]))
 
+(define typed?
+  (lambda (expr)
+    (match? `(typed ,_ ,_) expr)))
+
 (define define->name
   (match-lambda
     [`(define (,f . ,p*) : ,rt ,e) f]
@@ -49,34 +53,6 @@
     [`(fun-ref ,_) #t]
     [ (or (? integer?) (? boolean?) (? symbol?)) #t]
     [_(% #f)]))
-
-(define env-cre
-  (lambda () (list)))
-
-(define env-ref
-  (lambda (env key [handle #f])
-    (let loop ([env env])
-      (if (empty? env)
-        (if (not handle)
-          (error 'env "couldn't find '~a' in env" key)
-          (handle))
-        (match (car env)
-          [(mcons k v) 
-           (if (eq? key k) v (loop (cdr env)))])))))
-
-(define env-add
-  (case-lambda
-    [(env key val)
-     (cons (mcons key val) env)]
-    [(env ass)
-     (for/fold ([env env]) ([k.v ass])
-       (match k.v [`(,k ,v) (env-add env k v)]))]))
-
-(define set-closure-env
-  (lambda (closure nenv)
-    (match closure
-      [`(closure ,v* ,e ,senv)
-       `(closure ,v* ,e ,nenv)])))
 
 (define ath-op->proc
   (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))
@@ -171,7 +147,7 @@
       (pretty-display
         (let loop ([res '()] [kase kase] [pass* pass*])
           (if (empty? pass*)
-           `((execute ,(reverse res)) ,kase)
+           `((execute ,res) ,kase)
             (let* ([pass (car pass*)] [kase (pass kase)])
               (loop (cons (handle kase) res) kase (cdr pass*)))))))))
 

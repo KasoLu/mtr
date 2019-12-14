@@ -1,143 +1,151 @@
 #lang racket
 
-(provide (rename-out [@pgm parse]))
+(provide (rename-out [ast:pgm parse]))
 (require "helper.rkt" racket/fixnum)
 
-(define @pgm
+(define ast:pgm
   (match-lambda
     [`(program ,pi ,def* ... ,expr)
-      (let ([tenv (map define->func.type def*)])
-        (parameterize ([$define-record/cur '(main)])
-         `(program ,pi ,@(map (curry @def tenv) def*)
-            (define (main) ,(@exp tenv expr)))))]))
+      (let ([v.t* (map def->f.t def*)])
+        (parameterize ([$def-rcd/cur '(main begin)])
+         `(program ,pi ,@(map (curry ast:def v.t*) def*)
+           ,(let-values ([(e t) (ast:exp v.t* expr)]) e))))]))
 
-(define @def
-  (lambda (tenv def)
+(define ast:def
+  (lambda (v.t* def)
     (match def
       [`(define (,f [,v* : ,t*]...) : ,rt ,e)
-        (if (memq f ($define-record/cur))
-          (report-error/dup f)
+        (if (memq f ($def-rcd/cur))
+          (rpt-err/dup f)
           (begin
-            ($define-record/add f)
-            (let*
-              ([e (@exp (assoc-add tenv (map make-pair v* t*)) e)]
-               [t (typed->type e)])
-              (if (equal? rt (typed->type e))
+            ($def-rcd/add f)
+            (let-values ([(e t) (ast:exp (assoc-add v.t* (map make-pair v* t*)) e)])
+              (if (equal? rt t)
                `(define (,f . ,v*) ,e)
-                (report-error/typ `(define (,f . ,t*) : ,rt ,e))))))])))
+                (rpt-err/typ `(define (,f . ,t*) : ,rt ,t))))))])))
 
-(define @exp
-  (lambda (tenv expr)
-    (let ([recur (curry @exp tenv)])
+(define ast:exp
+  (lambda (v.t* expr)
+    (let ([recur (curry ast:exp v.t*)])
       (match expr
-        [`(read)
-         `(typed ,expr Integer)]
-        [`(void)
-         `(typed ,expr Void)]
+        [`(read) (values expr 'Integer)]
+        [`(void) (values expr 'Void)]
         [`(- ,e1)
-          (let* ([e1 (recur e1)] [t1 (typed->type e1)])
+          (let-values ([(e1 t1) (recur e1)])
             (if (eq? t1 'Integer)
-             `(typed (- ,e1) Integer)
-              (report-error/typ `(- ,t1))))]
-        [`(,(? ath-op? op) ,e1 ,e2)
-          (let* ([e* (map recur `(,e1 ,e2))] [t* (map typed->type e*)])
+              (values `(- ,e1) 'Integer)
+              (rpt-err/typ `(- ,t1))))]
+        [`(,op ,e1 ,e2) #:when (ath-op? op)
+          (let-values ([(e* t*) (map/values recur `(,e1 ,e2))])
             (if (all-Integer? t*)
-             `(typed (,op . ,e*) Integer)
-              (report-error/typ `(,op . ,t*))))]
+              (values `(,op . ,e*) 'Integer)
+              (rpt-err/typ `(,op . ,t*))))]
         [`(and ,e1 ,e2)
-          (recur `(if ,e1 (if ,e2 #t #f) #f))]
+          (let-values ([(e* t*) (map/values recur `(,e1 ,e2))])
+            (if (all-Boolean? t*)
+              (match-let ([`(,e1 ,e2) e*])
+                (values `(if ,e1 (if ,e2 #t #f) #f) 'Boolean))
+              (rpt-err/typ `(and . ,t*))))]
         [`(or ,e1 ,e2)
-          (recur `(if ,e1 #t (if ,e2 #t #f)))]
+          (let-values ([(e* t*) (map/values recur `(,e1 ,e2))])
+            (if (all-Boolean? t*)
+              (match-let ([`(,e1 ,e2) e*])
+                (values `(if ,e1 #t (if ,e2 #t #f)) 'Boolean))
+              (rpt-err/typ `(or . ,t*))))]
         [`(not ,e1)
-          (let* ([e1 (recur e1)] [t1 (typed->type e1)])
+          (let-values ([(e1 t1) (recur e1)])
             (if (eq? t1 'Boolean)
-             `(typed (not ,e1) Boolean)
-              (report-error/typ `(not ,t1))))]
+              (values `(not ,e1) 'Boolean)
+              (rpt-err/typ `(not ,t1))))]
         [`(eq? ,e1 ,e2)
-          (let* ([e* (map recur `(,e1 ,e2))] [t* (map typed->type e*)])
+          (let-values ([(e* t*) (map/values recur `(,e1 ,e2))])
             (if ((disjoin all-Integer? all-Boolean?) t*)
-             `(typed (eq? . ,e*) Boolean)
-              (report-error/typ `(eq? . ,t*))))]
-        [`(,(? cmp-op? op) ,e1 ,e2)
-          (let* ([e* (map recur `(,e1 ,e2))] [t* (map typed->type e*)])
+              (values `(eq? . ,e*) 'Boolean)
+              (rpt-err/typ `(eq? . ,t*))))]
+        [`(,op ,e1 ,e2) #:when (cmp-op? op)
+          (let-values ([(e* t*) (map/values recur `(,e1 ,e2))])
             (if (all-Integer? t*)
-             `(typed (,op . ,e*) Boolean)
-              (report-error/typ `(,op . ,t*))))]
-        [`(let ([,v ,e1]) ,e2)
-          (let* 
-            ([e1 (recur e1)] [t1 (typed->type e1)]
-             [e2 (@exp (assoc-add tenv v t1) e2)] [t2 (typed->type e2)])
-           `(typed (let ([,v ,e1]) ,e2) ,t2))]
+              (values `(,op . ,e*) 'Boolean)
+              (rpt-err/typ `(,op . ,t*))))]
+        [`(let ([,v ,ee]) ,eb)
+          (let*-values
+            ([(ee te) (recur ee)] [(eb tb) (ast:exp (assoc-add v.t* v te) eb)])
+            (values `(let ([,v ,ee]) ,eb) tb))]
         [`(if ,e1 ,e2 ,e3)
-          (let*
-            ([e1 (recur e1)] [t1 (typed->type e1)]
-             [e2 (recur e2)] [t2 (typed->type e2)]
-             [e3 (recur e3)] [t3 (typed->type e3)])
-           (if (and (eq? t1 'Boolean) (equal? t2 t3))
-            `(typed (if ,e1 ,e2 ,e3) ,t2)
-             (report-error/typ `(if ,t1 ,t2 ,t3))))]
+          (let-values
+            ([(e1 t1) (recur e1)]
+             [(e2 t2) (recur e2)]
+             [(e3 t3) (recur e3)])
+            (if (and (eq? t1 'Boolean) (equal? t2 t3))
+              (values `(if ,e1 ,e2 ,e3) t2)
+              (rpt-err/typ `(if ,t1 ,t2 ,t3))))]
         [`(vector . ,e*)
-          (let* ([e* (map recur e*)] [t* (map typed->type e*)])
-           `(typed (vector . ,e*) (Vector . ,t*)))]
-        [`(vector-ref ,ev ,(? fixnum? i))
-          (let* ([ev (recur ev)] [tv (typed->type ev)])
+          (let-values ([(e* t*) (map/values recur e* dft-res/val)])
+            (let ([t `(Vector . ,t*)])
+              (values `(vector . ,(map expr->typed e* t*)) t)))]
+        [`(vector-ref ,ev ,(? fixnum? ei))
+          (let-values ([(ev tv) (recur ev)])
             (match tv
               [`(Vector . ,t*)
-                (if (< i (length t*))
-                 `(typed (vector-ref ,ev ,(recur i)) ,(list-ref t* i))
-                  (report-error/oor `(vector-ref ,tv 'Integer)))]
-              [_(report-error/typ `(vector-ref ,tv 'Integer))]))]
-        [`(vector-set! ,ev ,(? fixnum? i) ,e1)
-          (let* 
-            ([ev (recur ev)] [tv (typed->type ev)]
-             [e1 (recur e1)] [t1 (typed->type e1)])
+                (if (< ei (length t*))
+                  (values `(vector-ref ,ev ,ei) (list-ref t* ei))
+                  (rpt-err/oor `(vector-ref ,tv 'Integer)))]
+              [_(rpt-err/typ `(vector-ref ,tv 'Integer))]))]
+        [`(vector-set! ,ev ,(? fixnum? ei) ,e1)
+          (let-values ([(ev tv) (recur ev)] [(e1 t1) (recur e1)])
             (match tv
               [`(Vector . ,t*)
-                (if (< i (length t*))
-                 `(typed (vector-set! ,ev ,(recur i) ,e1) Void)
-                  (report-error/oor `(vector-set! ,tv ,i ,t1)))]
-              [_(report-error/typ `(vector-set! ,tv ,i ,t1))]))]
-        [`(lambda ([,v* : ,t*]...) : ,rt ,e1)
-          (let*
-            ([e1 (@exp (assoc-add tenv (map make-pair v* t*)) e1)]
-             [t1 (typed->type e1)])
-            (if (equal? rt t1)
-             `(typed (lambda ,v* ,e1) (,@t* -> ,rt))
-              (report-error/typ `(lambda ,t* : ,rt ,t1))))]
+                (if (< ei (length t*))
+                  (values `(vector-set! ,ev ,ei ,e1) 'Void)
+                  (rpt-err/oor `(vector-set! ,tv ,ei ,t1)))]
+              [_(rpt-err/typ `(vector-set! ,tv ,ei ,t1))]))]
+        [`(lambda ([,v* : ,t*]...) : ,rt ,eb)
+          (let-values ([(eb tb) (ast:exp (assoc-add v.t* (map make-pair v* t*)) eb)])
+            (if (equal? rt tb)
+              (values `(lambda ,v* ,eb) `(,@t* -> ,rt))
+              (rpt-err/typ `(lambda ,t* : ,rt ,tb))))]
         [`(,e1 . ,e*)
-          (let* 
-            ([e1 (recur e1)] [t1 (typed->type e1)]
-             [e* (map recur e*)] [t* (map typed->type e*)])
+          (let-values 
+            ([(e1 t1) (recur e1)] [(e* t*) (map/values recur e* dft-res/val)])
             (match t1
-              [`(,v-t* ... -> ,rt)
-                (if (equal? v-t* t*)
-                 `(typed (app ,e1 . ,e*) ,rt)
-                  (report-error/typ `(,t1 . ,t*)))]
-              [_(report-error/typ `(,t1 . ,t*))]))]
-        [_(@arg tenv expr)]))))
+              [`(,vt* ... -> ,rt)
+                (if (equal? vt* t*)
+                  (values `(app ,e1 . ,(map expr->typed e* t*)) rt)
+                  (rpt-err/typ `(,t1 . ,t*)))]
+              [_(rpt-err/typ `(,t1 . ,t*))]))]
+        [_(ast:arg v.t* expr)]))))
 
-(define @arg
-  (lambda (tenv arg)
+(define ast:arg
+  (lambda (v.t* arg)
     (match arg
       [(? fixnum?)
-      `(typed ,arg Integer)]
+       (values arg 'Integer)]
       [(? boolean?)
-      `(typed ,arg Boolean)]
+       (values arg 'Boolean)]
       [(? symbol?)
-      `(typed ,arg ,(assoc-ref tenv arg))]
+       (let ([t (assoc-ref v.t* arg)])
+         (values `(typed ,arg ,t) t))]
       [(else)
-       (report-error/exp arg)])))
+       (rpt-err/exp arg)])))
 
-(define $define-record/cur 
+(define $def-rcd/cur
   (make-parameter (void)))
-(define $define-record/add
-  (lambda (def)
-    ($define-record/cur (cons def ($define-record/cur)))))
 
-(define define->func.type
+(define $def-rcd/add
+  (lambda (def) 
+    ($def-rcd/cur (cons def ($def-rcd/cur)))))
+
+(define def->f.t
   (match-lambda
     [`(define (,f [,v* : ,t*]...) : ,rt ,e)
       (make-pair f `(,@t* -> ,rt))]))
+
+(define expr->typed
+  (lambda (expr type)
+    (if (typed? expr) expr `(typed ,expr ,type))))
+
+(define dft-res/val
+  (lambda () (values '() '())))
 
 (define all-Integer?
   (curry andmap (curry eq? 'Integer)))
@@ -145,25 +153,25 @@
 (define all-Boolean?
   (curry andmap (curry eq? 'Boolean)))
 
-(define report-error/exp
+(define rpt-err/exp
   (lambda (expr)
     (error 'parse "invalid expr: ~a" expr)))
 
-(define report-error/typ
+(define rpt-err/typ
   (lambda (type)
     (error 'parse "invalid type: ~a" type)))
 
-(define report-error/dup
+(define rpt-err/dup
   (lambda (def)
     (error 'parse "already defined: ~a" def)))
 
-(define report-error/oor
+(define rpt-err/oor
   (lambda (expr)
     (error 'parse "index out of range: ~a" expr)))
 
 ;(require "interp.rkt")
 ;(test MTR/interp
-; `(,\@pgm)
+; `(,identity ,ast:pgm)
 
 ; `(program () 42)
 ; `(program () #t)
