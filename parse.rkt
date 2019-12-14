@@ -9,7 +9,7 @@
       (let ([v.t* (map def->f.t def*)])
         (parameterize ([$def-rcd/cur '(main begin)])
          `(program ,pi ,@(map (curry ast:def v.t*) def*)
-           ,(let-values ([(e t) (ast:exp v.t* expr)]) e))))]))
+            (define (begin) ,(let-values ([(e t) (ast:exp v.t* expr)]) e)))))]))
 
 (define ast:def
   (lambda (v.t* def)
