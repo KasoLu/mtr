@@ -1,10 +1,10 @@
 #lang racket
 
 (require "helper.rkt" "interp.rkt")
-(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt")
+(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt")
 
 (test MTR/interp 
- `(,identity ,parse ,uniquify ,closure-to-define
+ `(,identity ,parse ,uniquify ,closure-to-define ,limit-define
   )
 
  `(program () 42)
@@ -80,5 +80,18 @@
                  (lambda ([d : Integer]) : Integer
                    (+ a (+ d (x 30))))))])
       (b f)))
+ `(program ()
+    (define (aaa [a1 : Integer] [a2 : Boolean]
+                 [a3 : Integer] [a4 : Boolean]
+                 [a5 : Integer] [a6 : Boolean]
+                 [a7 : Integer] [a8 : Boolean]) : Boolean
+      (eq? 10
+        ((lambda ([l1 : Integer] [l2 : Boolean]
+                  [l3 : Integer] [l4 : Boolean]
+                  [l5 : Integer] [l6 : Boolean]
+                  [l7 : Integer] [l8 : Boolean]) : Integer
+           (+ a1 (+ a3 (+ l5 l7))))
+         10 #t 20 #f 30 #t 40 #f)))
+    (aaa 50 #f 60 #t 70 #f 80 #t))
  )
 

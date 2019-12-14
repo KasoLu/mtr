@@ -75,7 +75,8 @@
     (match arg
       [(? fixnum?) arg]
       [(? boolean?) arg]
-      [(? symbol?) (env-ref env arg)])))
+      [(or `(fun-ref ,v) (? symbol? v)) 
+       (env-ref env v)])))
 
 (define env-cre
   (lambda () (list)))
