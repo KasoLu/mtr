@@ -48,36 +48,3 @@
       [(? symbol?) (assoc-ref v.u* arg)]
       [(else) arg])))
 
-;(require "interp.rkt")
-;(require "parse.rkt")
-;(test MTR/interp
-; `(,parse ,ast:pgm)
-
-; `(program () (let ([x 10]) x))
-; `(program () (let ([x (let ([x 20]) x)]) x))
-; `(program () (let ([x (let ([x 20]) x)]) (let ([x 30]) x)))
-; `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
-; `(program ()
-;    (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
-;    (define (bbb [b1 : Integer]) : Integer (+ (aaa 10) b1)) 
-;    (define (ccc [c1 : Integer]) : Integer (+ 20 c1))
-;    (define (ddd [d1 : (Integer -> Integer)]
-;                 [d2 : (Integer -> Integer)])
-;            : (Vector Integer Integer)
-;      (vector (d1 30) (d2 40)))
-;    (vector-ref (ddd bbb ccc) 0))
-; `(program ()
-;    (define (map-vec [f : (Integer -> Integer)]
-;                     [v : (Vector Integer Integer)])
-;            : (Vector Integer Integer)
-;      (vector (f (vector-ref v 0)) (f (vector-ref v 1))))
-;    (define (add1 [x : Integer]) : Integer
-;      (+ x 1))
-;    (vector-ref (map-vec add1 (vector 0 41)) 1))
-; `(program ()
-;    (let ([x 10])
-;      (let ([f (lambda () : Integer (+ x (+ 20 20)))])
-;        (let ([x 30])
-;          (f)))))
-; )
-

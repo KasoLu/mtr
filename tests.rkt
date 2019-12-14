@@ -3,8 +3,9 @@
 (require "helper.rkt" "interp.rkt")
 (require "parse.rkt" "uniquify.rkt")
 
-(test MTR/interp
- `(,identity ,parse)
+(test MTR/interp 
+ `(,identity ,parse ,uniquify
+  )
 
  `(program () 41)
  `(program () #t)
@@ -12,6 +13,10 @@
  `(program () (read))
  `(program () (void))
  `(program () (let ([x 42]) x))
+ `(program () (let ([x 10]) x))
+ `(program () (let ([x (let ([x 20]) x)]) x))
+ `(program () (let ([x (let ([x 20]) x)]) (let ([x 30]) x)))
+ `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
  `(program () (if #t 42 24))
  `(program () (- 42))
  `(program () (+ 42 24))
@@ -41,6 +46,19 @@
                  [d2 : (Integer -> Integer)])
             : (Vector Integer Integer)
       (vector (d1 30) (d2 40)))
-    (ddd bbb ccc))
+    (vector-ref (ddd bbb ccc) 0))
+ `(program ()
+    (define (map-vec [f : (Integer -> Integer)]
+                     [v : (Vector Integer Integer)])
+            : (Vector Integer Integer)
+      (vector (f (vector-ref v 0)) (f (vector-ref v 1))))
+    (define (add1 [x : Integer]) : Integer
+      (+ x 1))
+    (vector-ref (map-vec add1 (vector 0 41)) 1))
+ `(program ()
+    (let ([x 10])
+      (let ([f (lambda () : Integer (+ x (+ 20 20)))])
+        (let ([x 30])
+          (f)))))
  )
 
