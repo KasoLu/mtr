@@ -2,12 +2,12 @@
 
 (require "helper.rkt" "interp.rkt")
 (require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
-         "type-eliminate.rkt" "vector-expand.rkt")
+         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt")
 
 (test MTR/interp 
  `(
    ,identity ,parse ,uniquify ,closure-to-define ,limit-define ,type-eliminate
-   ,vector-expand
+   ,vector-expand ,remove-complex
   )
 
  `(program () 42)
