@@ -1,15 +1,28 @@
 #lang racket
 
-(require "helper.rkt" "interp.rkt")
+(require "helper.rkt")
 (require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
-         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt")
+         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt"
+         "flatten-control.rkt")
+(require 
+  (submod "interp.rkt" MTR)
+  (submod "interp.rkt" MC))
 
-(test MTR/interp 
- `(
-   ,identity ,parse ,uniquify ,closure-to-define ,limit-define ,type-eliminate
-   ,vector-expand ,remove-complex
-  )
+(define make-handle
+  (lambda (pass** handle*)
+    (for/list ([pass* pass**] [handle handle*])
+      (for/list ([pass pass*]) `(,pass ,handle)))))
 
+(define handle
+  (append*
+    (make-handle
+     `([,identity ,parse ,uniquify ,closure-to-define ,limit-define ,type-eliminate
+        ,vector-expand ,remove-complex]
+       [,flatten-control])
+     `(#;,void ,MTR:interp
+       #;,void ,MC:interp))))
+
+(test handle
  `(program () 42)
  `(program () #t)
  `(program () #f)
@@ -37,7 +50,6 @@
  `(program () (vector (vector 1 2) (vector #t #f)))
  `(program () (vector-ref (vector 42 #t) 0))
  `(program () (vector-set! (vector 42 #t) 1 24))
- `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
  `(program ()
     (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
     (define (bbb [b1 : Integer]) : Integer (+ (aaa 10) b1)) 

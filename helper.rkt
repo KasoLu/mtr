@@ -52,6 +52,9 @@
     [ (or (? integer?) (? boolean?) (? symbol?)) #t]
     [_(% #f)]))
 
+(define cmp-exp?
+  (match-lambda [`(,(? cmp-exp?) ,_ ,_) #t] [_ #f]))
+
 (define ath-op->proc
   (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))
 
@@ -118,6 +121,9 @@
       [(not handle) (error 'map/values "list is empty")]
       [(owise) (handle)])))
 
+(define any?
+  (lambda (any) #t))
+
 ;; ----- syntax ----- ;;
 (define-syntax apply/values
   (syntax-rules ()
@@ -139,13 +145,13 @@
 
 ;; ----- test ----- ;;
 (define test
-  (lambda (handle pass* . case*)
+  (lambda (pass* . case*)
     (for ([kase case*])
       (newline)
       (pretty-display
         (let loop ([res '()] [kase kase] [pass* pass*])
           (if (empty? pass*)
            `((execute ,res) ,kase)
-            (let* ([pass (car pass*)] [kase (pass kase)])
-              (loop (cons (handle kase) res) kase (cdr pass*)))))))))
+            (match-let* ([`(,pass ,interp) (car pass*)] [kase (pass kase)])
+              (loop (cons (interp kase) res) kase (cdr pass*)))))))))
 
