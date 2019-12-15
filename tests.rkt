@@ -1,10 +1,12 @@
 #lang racket
 
 (require "helper.rkt" "interp.rkt")
-(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt")
+(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
+         "type-eliminate.rkt")
 
 (test MTR/interp 
- `(,identity ,parse ,uniquify ,closure-to-define ,limit-define
+ `(
+   ,identity ,parse ,uniquify ,closure-to-define ,limit-define ,type-eliminate
   )
 
  `(program () 42)
