@@ -48,7 +48,6 @@
 (define smp-exp?
   (match-lambda
     [`(global-value ,_) #t]
-    [`(fun-ref ,_) #t]
     [ (or (? integer?) (? boolean?) (? symbol?)) #t]
     [_(% #f)]))
 
