@@ -9,7 +9,9 @@
       (let ([def/u+ (map ast:def/dec def+)])
         (let ([f+ (map define->name def+)] [f/u+ (map define->name def/u+)])
           (let ([v.u+ (map make-pair f+ f/u+)])
-           `(program ,pi . ,(map (curry ast:def/exp v.u+) def/u+)))))]))
+           `(program
+             ,(assoc-add pi 'entry (last f/u+)) . 
+             ,(map (curry ast:def/exp v.u+) def/u+)))))]))
 
 (define ast:def/dec
   (match-lambda
