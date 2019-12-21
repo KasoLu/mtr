@@ -31,5 +31,7 @@
     [_(void)]))
 
 (define $var-rcd/cur (make-parameter (void)))
-(define $var-rcd/add (lambda (var) ($var-rcd/cur (cons var ($var-rcd/cur)))))
+(define $var-rcd/add 
+  (lambda (var) 
+    ($var-rcd/cur (set-union ($var-rcd/cur) `(,var)))))
 
