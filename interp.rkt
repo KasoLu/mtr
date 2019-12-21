@@ -4,123 +4,105 @@
   (provide (all-defined-out) (all-from-out "helper.rkt"))
   (require "helper.rkt")
 
-  (define env$/cur (make-parameter (void)))
-  (define env$/ref (lambda (k) (env-ref (env$/cur) k)))
-  (define env$/add
-    (case-lambda
-      [(k v) (env$/cur (env-add (env$/cur) k v))]
-      [(ass) (env$/cur (env-add (env$/cur) ass))]))
+  (define cps-map
+    (match-lambda*
+      [`(,proc ,a* ... ,e* ,cont)
+        (let loop ([e* e*] [v* (list)] [a* a*])
+          (if (empty? e*)
+            ((apply (curry cont) a*) (reverse v*))
+            ((apply (curry proc) a*) (car e*)
+              (match-lambda* [`(,a* ... ,vi) (loop (cdr e*) (cons vi v*) a*)]))))]))
 
-  (define env-cre
-    (lambda () (list)))
-
-  (define env-ref
-    (lambda (env key [handle #f])
-      (let loop ([env env])
-        (if (empty? env)
-          (if (not handle)
-            (error 'env "couldn't find '~a' in env" key)
-            (handle))
-          (match (car env)
-            [(mcons k v) 
-             (if (eq? key k) v (loop (cdr env)))])))))
-
-  (define env-add
-    (case-lambda
-      [(env key val)
-       (cons (mcons key val) env)]
-      [(env ass)
-       (for/fold ([env env]) ([k.v ass])
-         (match k.v [`(,k ,v) (env-add env k v)]))]))
-
-  (define set-closure-env
-    (lambda (closure nenv)
-      (match closure
-        [`(closure ,v* ,e ,senv)
-         `(closure ,v* ,e ,nenv)])))
   )
 
-(module MS racket
-  (provide (rename-out [itp:pgm MS:interp]))
+(module MR racket
+  (provide (rename-out [itp:pgm MR:interp]))
   (require (submod ".." env-utils))
 
   (define itp:pgm
     (match-lambda
-      [(or `(program ,pi ,def* ... (define (,_ ...) ,_ ,e)) 
+      [(or `(program ,pi ,def* ... (define (,_ ...) ,_ ,e))
            `(program ,pi ,def* ... (define (,_ ...) ,e))
            `(program ,pi ,def* ... ,e))
-       (let ([env (map itp:def def*)])
-         (for ([k.v env]) (set-mcdr! k.v (set-closure-env (mcdr k.v) env)))
-         (parameterize ([env$/cur env])
-           (itp:exp e)))]))
+       (let ([env (map def->f.c def*)])
+         (for ([k.v env])
+           (set-mcdr! k.v 
+             (match (mcdr k.v)
+               [`(closure ,v* ,e ,_)
+                `(closure ,v* ,e ,env)])))
+         (itp:exp env e identity))]))
 
-  (define itp:def
+  (define itp:exp
+    (lambda (env expr cont)
+      (let ([rec (curry itp:exp env)])
+        (match expr
+          [(or `(typed ,e ,t))
+           (rec e cont)]
+          [(or `(read))
+           (cont (read))]
+          [(or `(void))
+           (cont (void))]
+          [(or `(,op . ,e*)) #:when ((disjoin ath-op? cmp-op?) op)
+           (cps-map rec e*
+             (lambda (v*)
+               (cond
+                 [(ath-op? op) (cont (apply (ath-op->proc op) v*))]
+                 [(cmp-op? op) (cont (apply (cmp-op->proc op) v*))])))]
+          [(or `(not ,e1))
+           (rec e1 (lambda (v1) (cont (not v1))))]
+          [(or `(and ,e1 ,e2))
+           (rec e1 (lambda (v1) (if v1 (rec e2 cont) (cont #f))))]
+          [(or `(or ,e1 ,e2))
+           (rec e1 (lambda (v1) (if v1 (cont #t) (rec e2 cont))))]
+          [(or `(let ([,re ,ee]) ,eb))
+           (rec ee (lambda (ve) (itp:exp (env-add env re ve) eb cont)))]
+          [(or `(if ,e1 ,e2 ,e3))
+           (rec e1 (lambda (v1) (if v1 (rec e2 cont) (rec e3 cont))))]
+          [(or `(vector . ,e*) `(vector-tag ,_ . ,e*))
+           (cps-map rec e* (lambda (v*) (cont (list->vector v*))))]
+          [(or `(vector-ref ,ev ,ei))
+           (cps-map rec `(,ev ,ei) (lambda (v*) (cont (apply vector-ref v*))))]
+          [(or `(vector-set! ,ev ,ei ,e1))
+           (cps-map rec `(,ev ,ei ,e1) (lambda (v*) (cont (apply vector-set! v*))))]
+          [(or `(lambda ([,r* : ,_]...) : ,_ ,e1)
+               `(lambda ,r* ,e1))
+           (cont `(closure ,r* ,e1 ,env))]
+          [(or `(global-value ,v))
+           (cont 0)]
+          [(or `(collect ,i))
+           (cont (void))]
+          [(or `(allocate ,len ,tag))
+           (cont (make-vector len))]
+          [(or `(fun-ref ,l))
+           (cont (env-ref env l))]
+          [(or `(app ,e1 . ,e*)
+               `(,e1 . ,e*))
+           (cps-map rec `(,e1 . ,e*)
+             (lambda/match (`(,v1 . ,v*))
+               (match v1
+                 [`(closure ,r* ,body ,senv)
+                   (let ([nenv (env-add senv (map make-pair r* v*))])
+                     (itp:exp nenv body cont))])))]
+          [(else)
+           (itp:arg env expr cont)]))
+      
+      ))
+
+  (define itp:arg
+    (lambda (env arg cont)
+      (match arg
+        [(or (? fixnum?) (? boolean?))
+         (cont arg)]
+        [(or (? symbol?))
+         (cont (env-ref env arg))])))
+
+  (define def->f.c
     (match-lambda
       [(or `(define (,f  [,v* : ,_] ...) : ,_ ,e)
            `(define (,f . ,v*)  ,_  ,e)
            `(define (,f . ,v*)  ,e))
        (mcons f `(closure ,v* ,e #f))]))
 
-  (define itp:exp
-    (lambda (expr)
-      (match expr
-        [(or `(typed ,e ,t))
-         (itp:exp e)]
-        [(or `(read))
-         (read)]
-        [(or `(void))
-         (void)]
-        [(or `(,op . ,e*)) #:when ((disjoin ath-op? cmp-op?) op)
-         (let ([e* (map itp:exp e*)])
-           (cond
-             [(ath-op? op) (apply (ath-op->proc op) e*)]
-             [(cmp-op? op) (apply (cmp-op->proc op) e*)]))]
-        [(or `(not ,e1))
-         (not (itp:exp e1))]
-        [(or `(and ,e1 ,e2))
-         (if (itp:exp e1) (if (itp:exp e2) #t #f) #f)]
-        [(or `(or ,e1 ,e2))
-         (if (itp:exp e1) #t (if (itp:exp e2) #t #f))]
-        [(or `(let ([,v ,e1]) ,e2))
-         (let ([e1 (itp:exp e1)])
-           (if (eq? v '_)
-             (itp:exp e2)
-             (parameterize ([env$/cur (env-add (env$/cur) v e1)])
-               (itp:exp e2))))]
-        [(or `(if ,e1 ,e2 ,e3))
-         (if (itp:exp e1) (itp:exp e2) (itp:exp e3))]
-        [(or `(vector . ,e*) `(vector-tag ,_ . ,e*))
-         (apply vector (map itp:exp e*))]
-        [(or `(vector-ref ,ev ,ei))
-         (vector-ref (itp:exp ev) (itp:exp ei))]
-        [(or `(vector-set! ,ev ,ei ,e1))
-         (vector-set! (itp:exp ev) (itp:exp ei) (itp:exp e1))]
-        [(or `(lambda ([,v* : ,_]...) : ,_ ,e1)
-             `(lambda ,v* ,e1))
-         `(closure ,v* ,e1 ,(env$/cur))]
-        [(or `(global-value ,v))
-         (% 0)]
-        [(or `(collect ,i))
-         (void)]
-        [(or `(allocate ,len ,tag))
-         (make-vector len)]
-        [(or `(fun-ref ,l))
-         (env$/ref l)]
-        [(or `(app ,e1 . ,e*)
-             `(,e1 . ,e*))
-         (let ([e* (map itp:exp e*)])
-           (match (itp:exp e1)
-             [`(closure ,v* ,body ,senv)
-               (parameterize ([env$/cur (env-add senv (map make-pair v* e*))])
-                 (itp:exp body))]))]
-        [(else)
-         (itp:arg expr)])))
-
-  (define itp:arg
-    (lambda (args)
-      (match args
-        [(or (? fixnum?) (? boolean?)) args]
-        [(or (? symbol? v)) (env$/ref v)])))
   )
 
 (module MC racket
@@ -130,84 +112,236 @@
   (define itp:pgm
     (match-lambda
       [`(program ,pi . ,def+)
-        (parameterize ([env$/cur (map itp:def def+)])
-          (itp:tail `(tailcall ,(def+->entry def+) #f)))]))
+        (let ([env (map def->f.p def+)])
+          (itp:tail env `(tailcall ,(assoc-ref pi 'entry) #f) identity))]))
+  
+  (define itp:tail
+    (lambda (env tail cont)
+      (let ([rec-arg (curry itp:arg env)])
+        (match tail
+          [`(return ,e)
+            (itp:exp env e cont)]
+          [`(seq ,s ,t)
+            (itp:stmt env s (lambda (env) (itp:tail env t cont)))]
+          [`(goto ,l)
+            (itp:tail env (env-ref env l) cont)]
+          [`(if (,cmp ,a1 ,a2) ,go-l1 ,go-l2)
+            (cps-map rec-arg `(,a1 ,a2)
+              (lambda (v*)
+                (if (apply (cmp-op->proc cmp) v*)
+                  (itp:tail env go-l1 cont)
+                  (itp:tail env go-l2 cont))))]
+          [`(tailcall ,a1 . ,a*)
+            (cps-map rec-arg `(,a1 . ,a*)
+              (lambda/match (`(,v1 . ,v*))
+                (match v1
+                  [`(proc ,f ,r* ,lb.tail*)
+                    (let ([nenv (env-con env lb.tail* (map make-pair r* v*))])
+                      (let ([entry (assoc-ref lb.tail* (symbol-append f '_start))])
+                        (itp:tail nenv entry cont)))])))]))))
 
-  (define itp:def
+  (define itp:stmt
+    (lambda (env stmt cont)
+      (match stmt
+        [`(assign ,r ,e)
+          (itp:exp env e (lambda (v) (cont (env-add env r v))))]
+        [`(collect ,i)
+          (cont env)])))
+
+  (define itp:exp
+    (lambda (env expr cont)
+      (let ([rec-arg (curry itp:arg env)])
+        (match expr
+          [`(read)
+            (cont (read))]
+          [`(void)
+            (cont (void))]
+          [`(fun-ref ,v)
+            (cont (env-ref env v))]
+          [`(,op . ,a*) #:when ((disjoin ath-op? lgc-op? cmp-op?) op)
+            (cps-map rec-arg a*
+              (lambda (v*)
+                (cond
+                  [(ath-op? op) (cont (apply (ath-op->proc op) v*))]
+                  [(lgc-op? op) (cont (apply (lgc-op->proc op) v*))]
+                  [(cmp-op? op) (cont (apply (cmp-op->proc op) v*))])))]
+          [`(allocate ,i ,t)
+            (cont (make-vector i))]
+          [`(vector-ref ,a ,i)
+            (cps-map rec-arg `(,a ,i)
+              (lambda (v*) (cont (apply vector-ref v*))))]
+          [`(vector-set! ,v ,i ,a)
+            (cps-map rec-arg `(,v ,i ,a)
+              (lambda (v*) (cont (apply vector-set! v*))))]
+          [`(call ,a1 . ,a*)
+            (cps-map rec-arg `(,a1 . ,a*)
+              (lambda/match (`((proc ,f ,r* ,lb.tail*) . ,v*))
+                (let ([nenv (env-con env lb.tail* (map make-pair r* v*))])
+                  (let ([entry (assoc-ref lb.tail* (symbol-append f '_start))])
+                    (itp:tail nenv entry (lambda (v) (cont v)))))))]
+          [_(itp:arg env expr cont)]))))
+
+  (define itp:arg
+    (lambda (env arg cont)
+      (match arg
+        [(or (? fixnum?) (? boolean?))
+         (cont arg)]
+        [(or (? symbol? v))
+         (cont (env-ref env v))]
+        [(or`(global-value ,_))
+         (cont 0)])))
+
+  (define def->f.p
     (match-lambda
       [`(define (,f . ,v*) ,fi ,lb.tail*)
         (mcons f `(proc ,f ,v* ,lb.tail*))]))
-  
-  (define itp:tail
-    (lambda (tail)
-      (match tail
-        [`(return ,e)
-          (itp:exp e)]
-        [`(seq ,s ,t)
-          (itp:stmt s)
-          (itp:tail t)]
-        [`(goto ,l)
-          (itp:tail (env$/ref l))]
-        [`(if (,op ,a1 ,a2) (goto ,l1) (goto ,l2))
-          (if ((cmp-op->proc op) (itp:arg a1) (itp:arg a2))
-            (itp:tail (env$/ref l1))
-            (itp:tail (env$/ref l2)))]
-        [`(tailcall ,a1 . ,a*)
-          (match (itp:arg a1)
-            [`(proc ,f ,v* ,lb.tail*)
-              (let* 
-                ([nenv (env-add (env$/cur) lb.tail*)]
-                 [nenv (env-add (% nenv) (map make-pair v* (map itp:arg a*)))])
-                (parameterize ([env$/cur nenv])
-                  (itp:tail (assoc-ref lb.tail* (symbol-append f '_start)))))])])))
 
-  (define itp:stmt
-    (lambda (stmt)
-      (match stmt
-        [`(assign ,v ,e)
-          (let ([e (itp:exp e)])
-            (unless (eq? v '_) (env$/add v e)))]
-        [`(collect ,i)
-          (void)])))
-
-  (define itp:exp
-    (lambda (expr)
-      (match expr
-        [`(read)
-          (read)]
-        [`(void)
-          (void)]
-        [`(fun-ref ,v)
-          (env$/ref v)]
-        [`(,op . ,a*) #:when ((disjoin ath-op? lgc-op? cmp-op?) op)
-          (let ([a* (map itp:arg a*)])
-            (cond
-              [(ath-op? op) (apply (ath-op->proc op) a*)]
-              [(lgc-op? op) (apply (lgc-op->proc op) a*)]
-              [(cmp-op? op) (apply (cmp-op->proc op) a*)]))]
-        [`(allocate ,i ,t)
-          (make-vector i)]
-        [`(vector-ref ,a ,i)
-          (vector-ref (itp:arg a) i)]
-        [`(vector-set! ,v ,i ,a)
-          (vector-set! (itp:arg v) i (itp:arg a))]
-        [`(call ,a1 . ,a*)
-          (itp:tail `(tailcall ,a1 . ,a*))]
-        [_(itp:arg expr)])))
-
-  (define itp:arg
-    (lambda (arg)
-      (match arg
-        [(or (? fixnum?) (? boolean?)) arg]
-        [(or (? symbol? v)) (env$/ref v)]
-        [(or`(global-value ,_)) 0])))
-
-  (define def+->entry
-    (match-lambda
-      [`(,_ ... (define (,f . ,_) ,_ ,_)) f]))
   )
 
+(module MA racket
+  (provide (rename-out [itp:pgm MA:interp]))
+  (require (submod ".." env-utils) racket/fixnum)
+  ;(require "trace.rkt")
+  ;(require racket/trace)
 
-(require 'MS 'MC)
-(provide (all-from-out 'MS 'MC))
+  (define itp:pgm
+    (match-lambda
+      [`(program ,pi . ,def+)
+        (let ([bgn `(callq ,(assoc-ref pi 'entry))])
+          (let loop ([env (def+->env def+)] [ins+ (list bgn)] [stk (list)])
+            (itp:ins env ins+ stk
+              (lambda (env ins+ stk)
+                (cond
+                  [(not (empty? ins+))
+                   (loop env ins+ stk)]
+                  [(not (empty? stk))
+                   (loop env (car stk) (cdr stk))]
+                  [(owise)
+                   (env-ref env `(reg rax) (lambda () 0))])))))]))
+  
+  (define itp:ins
+    (lambda (env ins+ stk cont)
+      (match (car ins+)
+        [`(,op ,a1 ,a2) #:when (set-member? '(addq subq) op)
+          (cps-map itp:arg env `(,a1 ,a2)
+            (lambda/match (env `(,v1 ,v2))
+              (set-mcdr! v2 ((ath-ins->proc op) (mcdr v1) (mcdr v2)))
+              (cont env (cdr ins+) stk)))]
+        [`(,op ,a1) #:when (set-member? '(imulq idivq) op)
+          (cps-map itp:arg env `(,a1 (reg rax))
+            (lambda/match (env `(,v1 ,v2))
+              (set-mcdr! v2 ((ath-ins->proc op) (mcdr v1) (mcdr v2)))
+              (cont env (cdr ins+) stk)))]
+        [`(negq ,a1)
+          (itp:arg env a1
+            (lambda (env v1)
+              (set-mcdr! v1 (- (mcdr v1)))
+              (cont env (cdr ins+) stk)))]
+        [ (or `(movq ,a1 ,a2) `(movzbq ,a1 ,a2))
+          (cps-map itp:arg env `(,a1 ,a2)
+            (lambda/match (env `(,v1 ,v2))
+              (set-mcdr! v2 (mcdr v1))
+              (cont env (cdr ins+) stk)))]
+        [`(callq ,l)
+          (cond
+            [(eq? l 'collect)
+             (cont env (cdr ins+) stk)]
+            [(eq? l 'read_int)
+             (itp:arg env `(reg rax)
+               (lambda (env vax)
+                 (set-mcdr! vax (read))
+                 (cont env (cdr ins+) stk)))]
+            [(owise)
+             (cont env (env-ref env (symbol-append l '_pre)) (cons (cdr ins+) stk))])]
+        [`(retq)
+          (cont env (car stk) (cdr stk))]
+        [`(pushq ,a1)
+          (cps-map itp:arg env `(,a1 (reg rsp))
+            (lambda/match (env `(,v1 ,vsp))
+              (set-mcdr! vsp (cons (mcdr v1) (mcdr vsp)))
+              (cont env (cdr ins+) stk)))]
+        [`(popq ,a1)
+          (cps-map itp:arg env `(,a1 (reg rsp))
+            (lambda/match (env `(,v1 ,vsp))
+              (set-mcdr! v1  (car (mcdr vsp)))
+              (set-mcdr! vsp (cdr (mcdr vsp)))
+              (cont env (cdr ins+) stk)))]
+        [`(xorq ,a1 ,a2)
+          (cps-map itp:arg env `(,a1 ,a2)
+            (lambda/match (env `(,v1 ,v2))
+              (set-mcdr! v2 (fxxor (mcdr v1) (mcdr v2)))
+              (cont env (cdr ins+) stk)))]
+        [`(cmpq ,a1 ,a2)
+          (cps-map itp:arg env `(,a1 ,a2)
+            (lambda/match (env `(,v1 ,v2))
+              (let ([v1/v (mcdr v1)] [v2/v (mcdr v2)])
+                (cps-map itp:arg env `((cc l) (cc le) (cc g) (cc ge) (cc e))
+                  (lambda/match (env `(,vl ,vle ,vg ,vge ,ve))
+                    (set-mcdr! vl  (if (fx<  v2/v v1/v) 1 0))
+                    (set-mcdr! vle (if (fx<= v2/v v1/v) 1 0))
+                    (set-mcdr! vg  (if (fx>  v2/v v1/v) 1 0))
+                    (set-mcdr! vge (if (fx>= v2/v v1/v) 1 0))
+                    (set-mcdr! ve  (if (fx=  v2/v v1/v) 1 0))
+                    (cont env (cdr ins+) stk))))))]
+        [`(set ,cc ,a1)
+          (cps-map itp:arg env `((cc ,cc) ,a1)
+            (lambda/match (env `(,vc ,v1))
+              (set-mcdr! v1 (mcdr vc))
+              (cont env (cdr ins+) stk)))]
+        [`(jmp ,l)
+          (cont env (env-ref env l) stk)]
+        [`(jmp-if ,cc ,l)
+          (if (zero? (env-ref env `(cc ,cc)))
+            (cont env (cdr ins+) stk)
+            (cont env (env-ref env l) stk))]
+        [`(jmp-post ,post)
+          (cont env (car stk) (cdr stk))]
+        [`(indirect-callq ,a1)
+          (itp:arg env a1
+            (lambda (env v1)
+              (cont env (mcdr v1) (cons (cdr ins+) stk))))]
+        [`(tail-jmp ,a1)
+          (itp:arg env a1
+            (lambda (env v1)
+              (cont env (mcdr v1) stk)))]
+        [`(leaq (fun-ref ,l) ,a2)
+          (itp:arg env a2
+            (lambda (env v2)
+              (set-mcdr! v2 (env-ref env (symbol-append l '_pre)))
+              (cont env (cdr ins+) stk)))])))
+
+  (define itp:arg
+    (lambda (env arg cont)
+      (match arg
+        [`(int ,int)
+          (cont env (mcons arg int))]
+        [`(global-value fromspace_end)
+          (cont env (mcons arg 32768))]
+        [`(deref ,reg ,ofs)
+          (let ([hsh (env-ref env `(reg ,reg) (lambda () 0))])
+            (let ([adr (+ ofs (* hsh 33))])
+              (let ([found (env-ass env `(var ,adr) (lambda () #f))])
+                (if (not found)
+                  (let ([found (mcons `(var ,adr) 0)])
+                    (cont (env-add env found) found))
+                  (cont env found)))))]
+        [_
+         (let ([found (env-ass env arg (lambda () #f))])
+           (if (not found)
+             (let ([found (mcons arg 0)])
+               (cont (env-add env found) found))
+             (cont env found)))])))
+
+  (define def+->env
+    (lambda (def+)
+      (for/fold ([env (env-cre)]) ([def def+])
+        (match def
+          [`(define (,f) ,fi ([,l+ (block ,bi . ,i++)]...))
+            (for/fold ([env env]) ([l l+] [i+ i++])
+              (env-add env l i+))]))))
+
+  )
+
+(require 'MR 'MC 'MA)
+(provide (all-from-out 'MR 'MC 'MA))
 

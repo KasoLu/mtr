@@ -10,6 +10,14 @@
 (define g-fe
  '(global-value fromspace_end))
 
+(define reg?
+  (curry set-member? 
+    `(rsp rbp rax rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14 r15)))
+
+(define glb?
+  (lambda (v)
+    (match? `(global-value ,_) v)))
+
 (define ath-op '(+ - * /))
 (define ath-op? (curry set-member? ath-op))
 
@@ -18,6 +26,9 @@
 
 (define lgc-op '(and or not))
 (define lgc-op? (curry set-member? lgc-op))
+
+(define call-reg*
+ `(rdi rsi rdx rcx r8 r9))
 
 (define typed->type
   (match-lambda
@@ -57,6 +68,9 @@
 (define ath-op->proc
   (match-lambda ['+ fx+] ['- fx-] ['* fx*] ['/ fxquotient]))
 
+(define ath-ins->proc
+  (match-lambda ['addq fx+] ['subq fx-] ['imulq fx*] ['idivq fxquotient]))
+
 (define lgc-op->proc
   (match-lambda ['not not]))
 
@@ -64,12 +78,53 @@
   (match-lambda ['eq? eq?] ['< fx<] ['> fx>] ['<= fx<=] ['>= fx>=]))
 
 ;; ----- utils ----- ;;
+(define env-cre
+  (lambda () (list)))
+
+(define env-ref
+  (lambda (env key [handle #f])
+    (let loop ([env env])
+      (if (empty? env)
+        (if (not handle)
+          (error 'env "couldn't find '~a' in env" key)
+          (handle))
+        (match (car env)
+          [(mcons k v) 
+           (if (equal? key k) v (loop (cdr env)))])))))
+
+(define env-ass
+  (lambda (env key [handle #f])
+    (let loop ([env env])
+      (if (empty? env)
+        (if (not handle)
+          (error 'env "couldn't find '~a' in env" key)
+          (handle))
+        (let ([mpair (car env)])
+          (match mpair
+            [(mcons k v) 
+             (if (equal? key k) mpair (loop (cdr env)))]))))))
+
+(define env-add
+  (case-lambda
+    [(env key val)
+     (cons (mcons key val) env)]
+    [(env ass)
+     (if (mpair? ass)
+       (cons ass env)
+       (for/fold ([env env]) ([k.v ass])
+         (match k.v [`(,k ,v) (env-add env k v)])))]))
+
+(define env-con
+  (lambda (env . ass*)
+    (for/fold ([env env]) ([ass ass*])
+      (env-add env ass))))
+
 (define make-assoc
   (lambda () (list)))
 
 (define assoc-ref
   (lambda (ass key [handle #f])
-    (let ([found (assq key ass)])
+    (let ([found (assoc key ass)])
       (if (pair? found)
         (pair->val found)
         (if (not handle)
@@ -124,6 +179,11 @@
   (lambda (any) #t))
 
 ;; ----- syntax ----- ;;
+(define-syntax lambda/match
+  (syntax-rules ()
+    [(_ pat body ...)
+     (match-lambda** [pat body ...])]))
+
 (define-syntax apply/values
   (syntax-rules ()
     [(_ func vals)

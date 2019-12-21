@@ -3,10 +3,8 @@
 (require "helper.rkt")
 (require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
          "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt"
-         "flatten-control.rkt" "locals-collect.rkt")
-(require 
-  (submod "interp.rkt" MTR)
-  (submod "interp.rkt" MC))
+         "flatten-control.rkt" "locals-collect.rkt" "target-select.rkt")
+(require "interp.rkt")
 
 (define make-handle
   (lambda (pass** handle*)
@@ -16,11 +14,15 @@
 (define handle
   (append*
     (make-handle
-     `([,identity ,parse ,uniquify ,closure-to-define ,limit-define ,type-eliminate
-        ,vector-expand ,remove-complex]
-       [,flatten-control ,locals-collect])
-     `(#;,void ,MTR:interp
-       #;,void ,MC:interp))))
+     `([,identity ,parse ,uniquify ,closure-to-define ,limit-define
+        ,type-eliminate ,vector-expand ,remove-complex]
+       [,flatten-control ,locals-collect]
+       [,target-select])
+     `(
+       ,MR:interp
+       ,MC:interp
+       ,MA:interp
+       ))))
 
 (test handle
  `(program () 42)
