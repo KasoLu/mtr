@@ -1,23 +1,8 @@
 #lang racket
 
-(module env-utils racket
-  (provide (all-defined-out) (all-from-out "helper.rkt"))
-  (require "helper.rkt")
-
-  (define cps-map
-    (match-lambda*
-      [`(,proc ,a* ... ,e* ,cont)
-        (let loop ([e* e*] [v* (list)] [a* a*])
-          (if (empty? e*)
-            ((apply (curry cont) a*) (reverse v*))
-            ((apply (curry proc) a*) (car e*)
-              (match-lambda* [`(,a* ... ,vi) (loop (cdr e*) (cons vi v*) a*)]))))]))
-
-  )
-
 (module MR racket
   (provide (rename-out [itp:pgm MR:interp]))
-  (require (submod ".." env-utils))
+  (require "helper.rkt")
 
   (define itp:pgm
     (match-lambda
@@ -107,7 +92,7 @@
 
 (module MC racket
   (provide (rename-out [itp:pgm MC:interp]))
-  (require (submod ".." env-utils))
+  (require "helper.rkt")
 
   (define itp:pgm
     (match-lambda
@@ -200,9 +185,7 @@
 
 (module MA racket
   (provide (rename-out [itp:pgm MA:interp]))
-  (require (submod ".." env-utils) racket/fixnum)
-  ;(require "trace.rkt")
-  ;(require racket/trace)
+  (require "helper.rkt" racket/fixnum)
 
   (define itp:pgm
     (match-lambda
@@ -258,14 +241,19 @@
         [`(pushq ,a1)
           (cps-map itp:arg env `(,a1 (reg rsp))
             (lambda/match (env `(,v1 ,vsp))
-              (set-mcdr! vsp (cons (mcdr v1) (mcdr vsp)))
-              (cont env (cdr ins+) stk)))]
+              (set-mcdr! vsp (- (mcdr vsp) 8))
+              (itp:arg env `(adr ,(mcdr vsp))
+                (lambda (env vdr)
+                  (set-mcdr! vdr (mcdr v1))
+                  (cont env (cdr ins+) stk)))))]
         [`(popq ,a1)
           (cps-map itp:arg env `(,a1 (reg rsp))
             (lambda/match (env `(,v1 ,vsp))
-              (set-mcdr! v1  (car (mcdr vsp)))
-              (set-mcdr! vsp (cdr (mcdr vsp)))
-              (cont env (cdr ins+) stk)))]
+              (itp:arg env `(adr ,(mcdr vsp))
+                (lambda (env vdr)
+                  (set-mcdr! v1  (mcdr vdr))
+                  (set-mcdr! vsp (+ (mcdr vsp) 8))
+                  (cont env (cdr ins+) stk)))))]
         [`(xorq ,a1 ,a2)
           (cps-map itp:arg env `(,a1 ,a2)
             (lambda/match (env `(,v1 ,v2))
@@ -315,30 +303,28 @@
       (match arg
         [`(int ,int)
           (cont env (mcons arg int))]
-        [`(global-value fromspace_end)
-          (cont env (mcons arg 32768))]
         [`(deref ,reg ,ofs)
-          (let ([hsh (env-ref env `(reg ,reg) (lambda () 0))])
-            (let ([adr (+ ofs (* hsh 33))])
-              (let ([found (env-ass env `(var ,adr) (lambda () #f))])
-                (if (not found)
-                  (let ([found (mcons `(var ,adr) 0)])
-                    (cont (env-add env found) found))
-                  (cont env found)))))]
+          (itp:arg env `(reg ,reg)
+            (lambda (env veg)
+              (itp:arg env `(adr ,(+ (mcdr veg) ofs)) cont)))]
         [_
-         (let ([found (env-ass env arg (lambda () #f))])
-           (if (not found)
-             (let ([found (mcons arg 0)])
-               (cont (env-add env found) found))
-             (cont env found)))])))
+          (let ([fnd (env-ass env arg (lambda () #f))])
+            (if (not fnd)
+              (let ([fnd (mcons arg 0)]) (cont (env-add env fnd) fnd))
+              (cont env fnd)))])))
 
   (define def+->env
     (lambda (def+)
-      (for/fold ([env (env-cre)]) ([def def+])
-        (match def
-          [`(define (,f) ,fi ([,l+ (block ,bi . ,i++)]...))
-            (for/fold ([env env]) ([l l+] [i+ i++])
-              (env-add env l i+))]))))
+      (let ([stk-top 16384])
+        (apply env-con (env-cre)
+          (mcons '(reg rsp) (sub1 stk-top))
+          (mcons  (% g-fp)  (% 0))
+          (mcons  (% g-fe)  (% stk-top))
+          (for/fold ([ass (env-cre)]) ([def def+])
+            (match def
+              [`(define (,f) ,fi ([,l+ (block ,bi . ,i++)]...))
+                (for/fold ([ass ass]) ([l l+] [i+ i++])
+                  (env-add ass l i+))]))))))
 
   )
 

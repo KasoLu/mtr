@@ -1,7 +1,7 @@
 #lang racket
 
 (provide (all-defined-out) %)
-(require racket/control racket/fixnum)
+(require racket/control racket/fixnum racket/trace)
 
 ;; ---- language ---- ;;
 (define g-fp
@@ -177,6 +177,17 @@
 
 (define any?
   (lambda (any) #t))
+
+(define cps-map
+  (match-lambda*
+    [`(,proc ,a* ... ,e* ,cont)
+      (let ([a*-len (length a*)])
+        (let loop ([e* e*] [a* a*] [v* (list)])
+          (if (empty? e*)
+            (apply (apply (curry cont) a*) (apply map list (reverse v*)))
+            (curry (apply (curry proc) a*) (car e*)
+              (lambda r*
+                (loop (cdr e*) (take r* a*-len) (cons (drop r* a*-len) v*)))))))]))
 
 ;; ----- syntax ----- ;;
 (define-syntax lambda/match
