@@ -1,7 +1,7 @@
 #lang racket
 
 (provide (all-defined-out) %)
-(require racket/control racket/fixnum racket/trace)
+(require racket/control racket/fixnum racket/trace racket/hash)
 
 ;; ---- language ---- ;;
 (define g-fp
@@ -56,6 +56,9 @@
   (lambda (type)
     (match? `(Vector . ,_) type)))
 
+(define void-type?
+  (curry eq? 'Void))
+
 (define smp-exp?
   (match-lambda
     [`(global-value ,_) #t]
@@ -77,87 +80,80 @@
 (define cmp-op->proc
   (match-lambda ['eq? eq?] ['< fx<] ['> fx>] ['<= fx<=] ['>= fx>=]))
 
+(define type-anoc
+  (lambda (var type) `(,var : ,type)))
+
 ;; ----- utils ----- ;;
+(define make-pair cons)
+(define pair->key car)
+(define pair->val cdr)
+
 (define env-cre
-  (lambda () (list)))
-
-(define env-ref
-  (lambda (env key [handle #f])
-    (let loop ([env env])
-      (if (empty? env)
-        (if (not handle)
-          (error 'env "couldn't find '~a' in env" key)
-          (handle))
-        (match (car env)
-          [(mcons k v) 
-           (if (equal? key k) v (loop (cdr env)))])))))
-
-(define env-ass
-  (lambda (env key [handle #f])
-    (let loop ([env env])
-      (if (empty? env)
-        (if (not handle)
-          (error 'env "couldn't find '~a' in env" key)
-          (handle))
-        (let ([mpair (car env)])
-          (match mpair
-            [(mcons k v) 
-             (if (equal? key k) mpair (loop (cdr env)))]))))))
-
+  (case-lambda
+    [()
+     (list)]
+    [(bnd*)
+     (for/fold ([env (list)]) ([k.v bnd*])
+       (match k.v [`(,k . ,v) (env-add env k v)]))]
+    [(key* val*)
+     (for/fold ([env (list)]) ([k key*] [v val*])
+       (env-add env k v))]))
 (define env-add
   (case-lambda
     [(env key val)
      (cons (mcons key val) env)]
-    [(env ass)
-     (if (mpair? ass)
-       (cons ass env)
-       (for/fold ([env env]) ([k.v ass])
-         (match k.v [`(,k ,v) (env-add env k v)])))]))
+    [(env new-env)
+     (append new-env env)]))
+(define env-set
+  (lambda (env key val)
+    (let ([fnd (env-get env key (lambda () #f))])
+      (if (not fnd)
+        (error 'env-set "not found '~a'" key)
+        (begin (set-mcdr! fnd val) env)))))
+(define env-ref
+  (lambda (env key [handle #f])
+    (let ([fnd (env-get env key (lambda () #f))])
+      (if fnd (mcdr fnd)
+        (if handle (handle)
+          (error 'env "couldn't find '~a' in env" key))))))
+(define env-get
+  (lambda (env key [handle #f])
+    (let loop ([env env])
+      (if (empty? env)
+        (if handle (handle)
+          (error 'env "couldn't find '~a' in env" key))
+        (match (car env)
+          [(@ bnd (mcons k v))
+           (if (equal? key k) bnd
+             (loop (cdr env)))])))))
 
-(define env-con
-  (lambda (env . ass*)
-    (for/fold ([env env]) ([ass ass*])
-      (env-add env ass))))
-
-(define make-assoc
-  (lambda () (list)))
-
+(define assoc-cre
+  (case-lambda
+    [()
+     (make-immutable-hash)]
+    [(bnd*)
+     (make-immutable-hash bnd*)]
+    [(key* val*)
+     (make-immutable-hash (map make-pair key* val*))]))
+(define assoc-add
+  (case-lambda
+    [(ass key val)
+     (hash-set ass key val)]
+    [(ass new-ass)
+     (hash-union ass new-ass)]))
 (define assoc-ref
   (lambda (ass key [handle #f])
-    (let ([found (assoc key ass)])
-      (if (pair? found)
-        (pair->val found)
+    (let ([fnd (hash-ref ass key #f)])
+      (if fnd fnd
         (if (not handle)
           (error 'assoc-ref "not found ~a" key)
           (handle))))))
 
-(define assoc-add
-  (case-lambda
-    [(ass key val)
-     (cons `(,key ,val) (assoc-del ass key))]
-    [(ass ass-new)
-     (append ass-new
-       (foldl (lambda (k.v ass) (assoc-del ass (pair->key k.v))) ass ass-new))]))
-
-(define assoc-del
-  (lambda (ass key)
-    (filter (lambda (k.v) (not (eq? key (pair->key k.v)))) ass)))
-
-(define make-pair
-  (lambda (key val) (list key val)))
-
-(define pair->key
-  (lambda (k.v) (first k.v)))
-
-(define pair->val
-  (lambda (k.v) (second k.v)))
-
 (define symbol-append
-  (lambda (sym1 sym2)
+  (lambda sym* 
     (string->symbol
-      (string-append
-        (symbol->string sym1)
-        (symbol->string sym2)))))
+      (apply string-append
+        (map symbol->string sym*)))))
 
 (define map/reverse
   (lambda (proc . ls*)
@@ -181,13 +177,14 @@
 (define cps-map
   (match-lambda*
     [`(,proc ,a* ... ,e* ,cont)
-      (let ([a*-len (length a*)])
+      (let ([len (length a*)])
         (let loop ([e* e*] [a* a*] [v* (list)])
           (if (empty? e*)
-            (apply (apply (curry cont) a*) (apply map list (reverse v*)))
+            (if (empty? v*)
+              (curry (apply (curry cont) a*) (% v*))
+              (apply (apply (curry cont) a*) (apply map list (reverse v*))))
             (curry (apply (curry proc) a*) (car e*)
-              (lambda r*
-                (loop (cdr e*) (take r* a*-len) (cons (drop r* a*-len) v*)))))))]))
+              (lambda r* (loop (cdr e*) (take r* len) (cons (drop r* len) v*)))))))]))
 
 ;; ----- syntax ----- ;;
 (define-syntax lambda/match
@@ -204,14 +201,55 @@
   (syntax-rules ()
     [(_ pat val) (match val [pat #t] [_ #f])]))
 
+(define-syntax owise
+  (syntax-rules ()
+    [(_) #t]))
+
+(define-syntax define-store
+  (lambda (stx)
+    (define symbol-append
+      (lambda sym* 
+        (string->symbol
+          (apply string-append (map symbol->string sym*)))))
+    (define build-name
+      (lambda (name sfx)
+        (datum->syntax
+          (begin name)
+          (symbol-append (syntax-e name) sfx)
+          (begin name))))
+    (syntax-case stx ()
+      [(_ name type)
+       (let ([name-s #'name] [type-e (syntax-e #'type)])
+       #`(define-values
+           (#,(build-name name-s '/cur$)
+            #,(build-name name-s '/cre$)
+            #,(build-name name-s '/add$))
+           (let ([param (make-parameter (void))])
+           #,(cond
+               [(eq? '#:list type-e)
+                #`(values param list
+                    (lambda (v) (param (cons v (param)))))]
+               [(eq? '#:assoc type-e)
+                #`(values param assoc-cre
+                    (lambda (k v) (param (assoc-add (param) k v))))]
+               [(eq? '#:set type-e)
+                #`(values param set
+                    (lambda (v) (param (set-union (set v) (param)))))]))))])))
+
 (define-match-expander else
   (lambda (stx)
     (syntax-case stx ()
       [(_) #'(var _)])))
 
-(define-syntax owise
-  (syntax-rules ()
-    [(_) #t]))
+(define-match-expander @
+  (lambda (stx)
+    (syntax-case stx ()
+      [(_ id pat) #'(and id pat)])))
+
+(define-match-expander pair
+  (lambda (stx)
+    (syntax-case stx ()
+      [(_ k v) #'(cons k v)])))
 
 ;; ----- test ----- ;;
 (define test

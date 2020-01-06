@@ -1,9 +1,10 @@
 #lang racket
 
 (require "helper.rkt")
-(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
-         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt"
-         "flatten-control.rkt" "locals-collect.rkt" "target-select.rkt")
+;(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
+;         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt"
+;         "flatten-control.rkt" "locals-collect.rkt" "target-select.rkt")
+(require "parse.rkt")
 (require "interp.rkt")
 
 (define make-handle
@@ -14,14 +15,16 @@
 (define handle
   (append*
     (make-handle
-     `([,identity ,parse ,uniquify ,closure-to-define ,limit-define
-        ,type-eliminate ,vector-expand ,remove-complex]
-       [,flatten-control ,locals-collect]
-       [,target-select])
-     `(
-       ,MR:interp
-       ,MC:interp
-       ,MA:interp
+     `([,identity ,parse]
+       ;[,identity ,parse ,uniquify ,closure-to-define ,limit-define
+       ; ,type-eliminate ,vector-expand ,remove-complex]
+       ;[,flatten-control ,locals-collect]
+       ;[,target-select]
+       )
+     `(,MR:interp
+       ;,MC:interp
+       ;,MA:interp
+       ;,void
        ))))
 
 (test handle
@@ -33,8 +36,8 @@
  `(program () (let ([x (let ([x 20]) x)]) x))
  `(program () (let ([x (let ([x 20]) x)]) (let ([x 30]) x)))
  `(program () (let ([x (lambda ([a1 : Integer]) : Integer (+ a1 10))]) (x 20)))
+ `(program () (let ([x 10] [y x] [z y]) z))
  `(program () (if #t 42 24))
- `(program () (- 42))
  `(program () (+ 42 24))
  `(program () (- 42 24))
  `(program () (* 42 24))
@@ -52,6 +55,8 @@
  `(program () (vector (vector 1 2) (vector #t #f)))
  `(program () (vector-ref (vector 42 #t) 0))
  `(program () (vector-set! (vector 42 #t) 1 24))
+ `(program () (let ([v (vector 42 #t)]) 
+                (begin (vector-set! v 0 #f) (vector-ref v 0))))
  `(program ()
     (define (aaa [a1 : Integer]) : Integer (+ 10 a1))
     (define (bbb [b1 : Integer]) : Integer (+ (aaa 10) b1)) 
@@ -70,10 +75,8 @@
       (+ x 1))
     (vector-ref (map-vec add1 (vector 0 41)) 1))
  `(program ()
-    (let ([x 10])
-      (let ([f (lambda () : Integer (+ x (+ 20 20)))])
-        (let ([x 30])
-          (f)))))
+    (let ([x 10] [f (lambda () : Integer (+ x (+ 20 20)))] [x 30])
+      (f)))
  `(program ()
     (define (foo) : Integer 42)
     (define (bar [arg1 : Integer]) : Boolean (< arg1 42))
@@ -85,9 +88,8 @@
       (let ([y 4])
         (lambda ([z : Integer]) : Integer
           (+ x (+ y z)))))
-    (let ([g (f 5)])
-      (let ([h (f 3)])
-        (+ (g 11) (h 15)))))
+    (let ([g (f 5)] [h (f 3)])
+      (+ (g 11) (h 15))))
  `(program ()
     (define (b [z : (Integer -> (Integer -> Integer))]) : Integer
       (let ([c (z 10)])
