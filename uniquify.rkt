@@ -8,44 +8,41 @@
     [`(program ,pi . ,def+)
       (let ([def/u+ (map ast:def/dec def+)])
         (let ([f+ (map define->name def+)] [f/u+ (map define->name def/u+)])
-          (let ([v.u+ (map make-pair f+ f/u+)])
-           `(program
-             ,(assoc-add pi 'entry (last f/u+)) . 
-             ,(map (curry ast:def/exp v.u+) def/u+)))))]))
+          (let ([env (env-add (make-env) f+ f/u+)])
+           `(program ,pi . ,(map (curry ast:def/exp env) def/u+)))))]))
 
 (define ast:def/dec
   (match-lambda
-    [`(define (,f . ,v*) ,e)
-     `(define (,(gensym f) . ,v*) ,e)]))
+    [`(define (,f . ,v*) : ,r ,fi ,e)
+     `(define (,(gensym f) . ,v*) : ,r ,fi ,e)]))
 
 (define ast:def/exp
-  (lambda (v.u+ def)
+  (lambda (env def)
     (match def
-      [`(define (,f . ,v*) ,e)
+      [`(define (,f [,v* : ,t*]...) : ,r ,fi ,e)
         (let ([vu* (map gensym v*)])
-         `(define (,f . ,vu*)
-           ,(ast:exp (assoc-add v.u+ (map make-pair v* vu*)) e)))])))
+         `(define (,f . ,(map type-anoc vu* t*)) : ,r ,fi
+           ,(ast:exp (env-add env v* vu*) e)))])))
 
 (define ast:exp
-  (lambda (v.u+ expr)
-    (let ([recur (curry ast:exp v.u+)])
+  (lambda (env expr)
+    (let ([recur (curry ast:exp env)])
       (match expr
-        [`(typed ,e ,t)
-         `(typed ,(recur e) ,t)]
-        [`(let ([,v ,e1]) ,e2)
+        [`(bind [,v ,e1] ,e2)
           (let ([v/u (gensym v)])
-           `(let ([,v/u ,(recur e1)])
-             ,(ast:exp (assoc-add v.u+ v v/u) e2)))]
-        [`(lambda ,v* ,e1)
+           `(bind [,v/u ,(recur e1)]
+             ,(ast:exp (env-add env v v/u) e2)))]
+        [`(lambda ([,v* : ,t*]...) : ,r ,e1)
           (let ([v/u* (map gensym v*)])
-           `(lambda ,v/u* ,(ast:exp (assoc-add v.u+ (map make-pair v* v/u*)) e1)))]
+           `(lambda ,(map type-anoc v/u* t*) : ,r 
+             ,(ast:exp (env-add env v* v/u*) e1)))]
         [`(,op . ,e*)
          `(,op . ,(map recur e*))]
-        [_(ast:arg v.u+ expr)]))))
+        [_(ast:arg env expr)]))))
 
 (define ast:arg
-  (lambda (v.u+ arg)
+  (lambda (env arg)
     (match arg
-      [(? symbol?) (assoc-ref v.u+ arg)]
+      [(? symbol?) (env-ref env arg)]
       [(else) arg])))
 

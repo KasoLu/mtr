@@ -10,7 +10,7 @@
            `(program ,pi ,def* ... ,e))
        (let ([f.c* (map def->f.c def*)])
          (match
-           (for/fold ([env (env-cre f.c*)]) ([f.c f.c*])
+           (for/fold ([env (make-env f.c*)]) ([f.c f.c*])
              (match f.c
                [(pair key `(closure ,v* ,e ,_))
                 (env-set env key `(closure ,v* ,e ,env))]))
@@ -73,7 +73,7 @@
              (lambda/match (`(,v1 . ,v*))
                (match v1
                  [`(closure ,r* ,body ,senv)
-                   (let ([nenv (env-add senv (env-cre r* v*))])
+                   (let ([nenv (env-add senv r* v*)])
                      (itp:exp nenv body cont))])))]
           [(else)
            (itp:arg env expr cont)]))))

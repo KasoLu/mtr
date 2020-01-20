@@ -45,8 +45,7 @@
 (define define->name
   (match-lambda
     [`(define (,f . ,p*) : ,rt ,e) f]
-    [`(define (,f . ,p*) ,fi ,e) f]
-    [`(define (,f . ,p*) ,e) f]))
+    [`(define (,f . ,p*) : ,rt ,fi ,e) f]))
 
 (define proc-type?
   (lambda (type)
@@ -88,22 +87,19 @@
 (define pair->key car)
 (define pair->val cdr)
 
-(define env-cre
+(define make-env
   (case-lambda
-    [()
-     (list)]
-    [(bnd*)
-     (for/fold ([env (list)]) ([k.v bnd*])
-       (match k.v [`(,k . ,v) (env-add env k v)]))]
-    [(key* val*)
-     (for/fold ([env (list)]) ([k key*] [v val*])
-       (env-add env k v))]))
+    [() (list)]
+    [(ass)
+     (for/fold ([env (list)]) ([pair ass])
+       (env-add env (pair->key pair) (pair->val pair)))]))
 (define env-add
-  (case-lambda
-    [(env key val)
-     (cons (mcons key val) env)]
-    [(env new-env)
-     (append new-env env)]))
+  (lambda (env key/* val/*)
+    (match key/*
+      [(? symbol?)
+       (cons (mcons key/* val/*) env)]
+      [(? list?)
+       (append (map mcons key/* val/*) env)])))
 (define env-set
   (lambda (env key val)
     (let ([fnd (env-get env key (lambda () #f))])
@@ -127,20 +123,17 @@
            (if (equal? key k) bnd
              (loop (cdr env)))])))))
 
-(define assoc-cre
+(define make-assoc
   (case-lambda
-    [()
-     (make-immutable-hash)]
-    [(bnd*)
-     (make-immutable-hash bnd*)]
-    [(key* val*)
-     (make-immutable-hash (map make-pair key* val*))]))
+    [() (make-immutable-hash)]
+    [(ass) (make-immutable-hash ass)]))
 (define assoc-add
-  (case-lambda
-    [(ass key val)
-     (hash-set ass key val)]
-    [(ass new-ass)
-     (hash-union ass new-ass)]))
+  (lambda (ass key/* val/*)
+    (match key/*
+      [(? symbol?)
+       (hash-set ass key/* val/*)]
+      [(? list?)
+       (hash-union ass (make-assoc (map make-pair key/* val/*)))])))
 (define assoc-ref
   (lambda (ass key [handle #f])
     (let ([fnd (hash-ref ass key #f)])

@@ -4,7 +4,7 @@
 ;(require "parse.rkt" "uniquify.rkt" "closure-to-define.rkt" "limit-define.rkt"
 ;         "type-eliminate.rkt" "vector-expand.rkt" "remove-complex.rkt"
 ;         "flatten-control.rkt" "locals-collect.rkt" "target-select.rkt")
-(require "parse.rkt")
+(require "parse.rkt" "uniquify.rkt")
 (require "interp.rkt")
 
 (define make-handle
@@ -15,7 +15,7 @@
 (define handle
   (append*
     (make-handle
-     `([,identity ,parse]
+     `([,identity ,parse ,uniquify]
        ;[,identity ,parse ,uniquify ,closure-to-define ,limit-define
        ; ,type-eliminate ,vector-expand ,remove-complex]
        ;[,flatten-control ,locals-collect]

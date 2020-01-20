@@ -8,12 +8,12 @@
 (define ast:pgm
   (match-lambda
     [`(program ,pi ,def* ... ,expr)
-      (let ([env (env-cre (map def->f.t def*))])
+      (let ([env (make-env (map def->f.t def*))])
         (parameterize ([def-rcd/cur$ '(main begin)])
          `(program ,pi .
            ,(cons
               (let-values ([(e t) (ast:exp env expr)])
-               `(define (begin) : ,t ,(assoc-cre) ,e))
+               `(define (begin) : ,t ,(make-assoc) ,e))
               (map (curry ast:def env) def*)))))]))
 
 (define ast:def
@@ -24,9 +24,9 @@
           (error 'parse "already defined: ~a" f)
           (begin
             (def-rcd/add$ f)
-            (let-values ([(e t) (ast:exp (env-add env (env-cre v* t*)) e)])
+            (let-values ([(e t) (ast:exp (env-add env v* t*) e)])
               (if (equal? rt t)
-               `(define (,f . ,(map type-anoc v* t*)) : ,(assoc-cre) ,rt ,e)
+               `(define (,f . ,(map type-anoc v* t*)) : ,(make-assoc) ,rt ,e)
                 (report-error/type `(define (,f . ,t*) : ,rt ,t))))))])))
 
 (define ast:exp
@@ -111,7 +111,7 @@
         [`(lambda ([,v* : ,t*]...) : ,rt ,eb)
           (if (any-Void? t*)
             (report-error/type `(lambda ,t* : ,rt T))
-            (let-values ([(eb tb) (ast:exp (env-add env (env-cre v* t*)) eb)])
+            (let-values ([(eb tb) (ast:exp (env-add env v* t*) eb)])
               (if (equal? rt tb)
                 (values `(lambda ,(map type-anoc v* t*) : ,tb ,eb) `(,@t* -> ,tb))
                 (report-error/type `(lambda ,t* : ,rt ,tb)))))]
